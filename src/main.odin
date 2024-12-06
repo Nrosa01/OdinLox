@@ -2,6 +2,9 @@ package main
 
 import "core:fmt"
 import "core:mem"
+import "core:os"
+import "core:bufio"
+import "core:io"
 
 main :: proc() {
     when ODIN_DEBUG {
@@ -16,29 +19,48 @@ main :: proc() {
 execute :: proc() {
     initVM()
     defer(freeVM())
-    chunk: Chunk
-    defer(freeChunk(&chunk))
     
-    constant := addConstant(&chunk, 1.2)
-    writeChunk(&chunk, OpCode.OP_CONSTANT, 123)
-    writeChunk(&chunk, constant, 123)
+    args := os.args
+    argsLen := len(args)
+    if argsLen == 1 {
+        repl()
+    } else if argsLen == 2 {
+        run_file(args[1])
+    } else {
+        fmt.eprintln("Usage: clox [path]")
+        os.exit(64)
+    }
+}
 
-    constant = addConstant(&chunk, 3.4)
-    writeChunk(&chunk, OpCode.OP_CONSTANT, 123)
-    writeChunk(&chunk, constant, 123)
+repl :: proc() {
+    buffer: [1024]u8
+    reader: bufio.Reader
+    bufio.reader_init_with_buf(&reader, io.to_reader(os.stream_from_handle(os.stdin)), buffer[:])
+    for {
+        fmt.print(">  ")
 
-    writeChunk(&chunk, OpCode.OP_ADD, 123)
+        buffer, err := bufio.reader_read_slice(&reader, '\n')
+        if err != nil {
+            fmt.println(err)
+            break
+        }
+        interpret(string(buffer[:]))
+    }
+}
 
-    constant = addConstant(&chunk, 5.6)
-    writeChunk(&chunk, OpCode.OP_CONSTANT, 123)
-    writeChunk(&chunk, constant, 123)
-
-    writeChunk(&chunk, OpCode.OP_DIVIDE, 123)
-    writeChunk(&chunk, OpCode.OP_NEGATE, 123)
+run_file :: proc (path: string) {
+    source, err := os.read_entire_file(path)
     
-    writeChunk(&chunk, OpCode.OP_RETURN, 123)
-    // disassembleChunk(&chunk, "test chunk")
-    interpret(&chunk)
+    if err {
+        fmt.eprintf("Couldn not open file \"%v\".\n", path)
+        os.exit(74)
+    }
+    
+    defer delete(source)
+    result := interpret(string(source[:]))
+
+    if result == InterpretResult.COMPILE_ERROR { os.exit(65) }
+    if result == InterpretResult.RUNTIME_ERROR { os.exit(70) }
 }
 
 trace_mem :: proc(procedure: proc()) {

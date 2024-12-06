@@ -35,10 +35,9 @@ resetStack :: proc() {
     vm.stackTop = 0
 }
 
-interpret :: proc(chunk: ^Chunk) -> InterpretResult {
-    vm.chunk = chunk
-    vm.ip = vm.chunk.code[:]
-    return run()
+interpret :: proc(source: string) -> InterpretResult {
+    compile(source)
+    return .INTERPRET_OK
 }
 
 @private
