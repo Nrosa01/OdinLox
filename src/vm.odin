@@ -2,14 +2,13 @@
 
 import "core:fmt"
 
-DEBUG_TRACE_EXECUTION :: true
 STACK_MAX :: 256
 
 InterpretResult :: enum
 {
-    INTERPRET_OK,
-    INTERPRET_COMPILE_ERROR,
-    INTERPRET_RUNTIME_ERROR,
+    OK,
+    COMPILE_ERROR,
+    RUNTIME_ERROR,
 }
 
 VM :: struct {
@@ -36,8 +35,20 @@ resetStack :: proc() {
 }
 
 interpret :: proc(source: string) -> InterpretResult {
-    compile(source)
-    return .INTERPRET_OK
+    chunk: Chunk
+    defer free_chunk(&chunk)
+    
+    if !compile(source, &chunk) {
+        free_chunk(&chunk)
+        return .COMPILE_ERROR
+    }
+ 
+    vm.chunk = &chunk
+    vm.ip = vm.chunk.code[:]
+
+    // Surprisingly, it seems that "run" executes before the deferred statament
+    // This is pretty useful and allows cleaner code
+    return run()
 }
 
 @private
@@ -61,38 +72,38 @@ run :: proc() -> InterpretResult {
                 fmt.printf(" ]")
             }
             fmt.println()
-            disassembleInstruction(vm.chunk,  len(vm.chunk.code) - len(vm.ip))
+            disassemble_instruction(vm.chunk,  len(vm.chunk.code) - len(vm.ip))
         }
         
         instruction := cast(OpCode) readByte() 
         switch instruction {
-        case .OP_RETURN:
+        case .RETURN:
             printValue(pop())
             fmt.println()
-            return InterpretResult.INTERPRET_OK
-        case .OP_ADD:
+            return InterpretResult.OK
+        case .ADD:
             b := pop()
             a := pop()
             push(a + b)
-        case .OP_SUBTRACT:
+        case .SUBTRACT:
             b := pop()
             a := pop()
             push(a - b)
-        case .OP_MULTIPLY:
+        case .MULTIPLY:
             b := pop()
             a := pop()
             push(a * b)
-        case .OP_DIVIDE:
+        case .DIVIDE:
             b := pop()
             a := pop()
             push(a / b)
-        case .OP_CONSTANT:
+        case .CONSTANT:
             constant := readConstant()
             push(constant)
-        case .OP_NEGATE:
+        case .NEGATE:
             push(-pop())
         case:
-            return InterpretResult.INTERPRET_OK         
+            return InterpretResult.OK         
         }
     }
 }

@@ -2,7 +2,7 @@
 
 import "core:fmt"
 
-Value :: distinct f64
+Value :: f64
 
 printValue :: proc(value: Value) {
     fmt.printf("%f", value)

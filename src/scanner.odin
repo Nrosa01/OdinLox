@@ -89,7 +89,7 @@ scan_token :: proc() -> Token {
     return error_token("Unexpected character.")
 }
 
-@private
+@(private = "file")
 advance :: proc() -> rune {
     scanner.current += 1
     return utf8string.at(&scanner.buffer, scanner.current - 1)
@@ -105,8 +105,7 @@ match :: proc(expected: rune) -> bool {
 
 @private
 is_at_end :: proc() -> bool {
-    return utf8string.at(&scanner.buffer, scanner.current) == '\x00'
-//    return scanner.current >= utf8string.len(&scanner.buffer)-1
+    return scanner.current >= utf8string.len(&scanner.buffer)-1
 }
 
 @private

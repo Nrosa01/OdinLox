@@ -1,13 +1,13 @@
 ﻿package main
 
 OpCode :: enum u8 {
-    OP_CONSTANT,
-    OP_ADD,
-    OP_SUBTRACT,
-    OP_MULTIPLY,
-    OP_DIVIDE,
-    OP_NEGATE,
-    OP_RETURN,
+    CONSTANT,
+    ADD,
+    SUBTRACT,
+    MULTIPLY,
+    DIVIDE,
+    NEGATE,
+    RETURN,
 }
 
 Chunk :: struct
@@ -17,28 +17,39 @@ Chunk :: struct
     constants: [dynamic]Value,
 }
 
-freeChunk :: proc(c: ^Chunk) {
+free_chunk :: proc(c: ^Chunk) {
     delete(c.code)
     delete(c.lines)
     delete(c.constants)
 }
 
-writeChunk_OpCode :: proc(chunk: ^Chunk, code: OpCode, line: int) {
-    append(&chunk.code, cast(u8)code)
+@(private = "file")
+write_chunk_proc :: proc(chunk: ^Chunk, byte: u8, line: int) {
+    append(&chunk.code, byte)
     append(&chunk.lines, line)
 }
 
-writeChunk_Int :: proc(chunk: ^Chunk, byte: int, line: int) {
-    append(&chunk.code, cast(u8)byte)
-    append(&chunk.lines, line)
+@(private = "file")
+write_chunk_op_code :: proc(chunk: ^Chunk, code: OpCode, line: int) {
+    write_chunk_proc(chunk, cast(u8)code, line)
 }
 
-writeChunk :: proc {
-    writeChunk_OpCode,
-    writeChunk_Int,
+write_chunk_byte :: proc(chunk: ^Chunk, byte: u8, line: int){
+    write_chunk_proc(chunk, byte, line)
 }
 
-addConstant :: proc(chunk: ^Chunk, value: Value) -> int {
+@(private = "file")
+write_chunk_int :: proc(chunk: ^Chunk, code: int, line: int) {
+    write_chunk_proc(chunk, cast(u8)code, line)
+}
+
+write_chunk :: proc {
+    write_chunk_op_code,
+    write_chunk_byte,
+    write_chunk_int,
+}
+
+add_constant :: proc(chunk: ^Chunk, value: Value) -> int {
     append(&chunk.constants, value)
     return len(chunk.constants) - 1
 }
