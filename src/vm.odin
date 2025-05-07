@@ -2,6 +2,7 @@
 
 import "core:fmt"
 import "core:log"
+import slice "core:slice"
 
 STACK_MAX :: 256
 
@@ -17,17 +18,18 @@ VM :: struct {
     ip: []u8,
     stack: [STACK_MAX]Value,
     stack_top: u16,
+    objects: ^Obj
 }
 
-@(private = "file")
+@(private = "package")
 vm: VM
 
 init_vm :: proc() {
     reset_stack()
 }
 
-free_vm :: proc() {
-    
+free_vm :: proc() { 
+    free_objects()   
 }
 
 @(private = "file")
@@ -113,10 +115,14 @@ run :: proc() -> InterpretResult {
             a := AS_NUMBER(pop())
             push(BOOL_VAL(a < b))
         case .ADD:
-            check_numbers() or_return
-            b := AS_NUMBER(pop())
-            a := AS_NUMBER(pop())
-            push(NUMBER_VAL(a + b))
+            if IS_STRING(peek(0)) && IS_STRING(peek(1)) {
+                concatenate()
+            } else {
+                check_numbers() or_return
+                b := AS_NUMBER(pop())
+                a := AS_NUMBER(pop())
+                push(NUMBER_VAL(a + b))
+            }
         case .SUBTRACT:
             check_numbers() or_return
             b := AS_NUMBER(pop())
@@ -175,4 +181,18 @@ peek :: proc(distance: u16) -> Value {
 
 is_falsey :: proc(value: Value) -> bool  {
     return IS_NIL(value) || (IS_BOOL(value) && !AS_BOOL(value))
+}
+
+take_string :: proc(chars: []rune) -> ^ObjString {
+    return allocate_string(chars)
+}
+
+@(private = "file")
+concatenate :: proc() {
+    b_string := AS_STRING(pop()).chars
+    a_string := AS_STRING(pop()).chars
+
+    concatenated := slice.concatenate([][]rune{ a_string, b_string }) or_else panic("Failed to concatenate ut8 strings.")
+    
+    push(OBJ_VAL(take_string(concatenated)))
 }

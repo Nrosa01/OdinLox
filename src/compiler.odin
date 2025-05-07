@@ -186,6 +186,12 @@ number :: proc() {
 }
 
 @(private = "file")
+string_proc :: proc() {
+    str := parser.previous.value[1:len(parser.previous.value)-1] // removes the "" from the string literal
+    emit_constant(OBJ_VAL(copy_string(str)))
+}
+
+@(private = "file")
 unary :: proc() {
     operator_type := parser.previous.type
     
@@ -220,7 +226,7 @@ rules := []ParseRule {
     TokenType.LESS          = ParseRule{ nil,      binary, .COMPARISON },
     TokenType.LESS_EQUAL    = ParseRule{ nil,      binary, .COMPARISON },
     TokenType.IDENTIFIER    = ParseRule{ nil,      binary, .COMPARISON },
-    TokenType.STRING        = ParseRule{ nil,      nil,    .NONE },
+    TokenType.STRING        = ParseRule{ string_proc,      nil,    .NONE },
     TokenType.NUMBER        = ParseRule{ number,   nil,    .NONE },
     TokenType.AND           = ParseRule{ nil,      nil,    .NONE },
     TokenType.CLASS         = ParseRule{ nil,      nil,    .NONE },
