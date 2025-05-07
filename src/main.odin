@@ -7,7 +7,7 @@ import "core:bufio"
 import "core:io"
 
 main :: proc() {
-    when ODIN_DEBUG {
+    when DEBUG_TRACE_EXECUTION {
         fmt.printf("Debugging mode\n")
         trace_mem(execute)
     } else {
@@ -17,8 +17,8 @@ main :: proc() {
 }
 
 execute :: proc() {
-    initVM()
-    defer(freeVM())
+    init_vm()
+    defer(free_vm())
     
     args := os.args
     argsLen := len(args)

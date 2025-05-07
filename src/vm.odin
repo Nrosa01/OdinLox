@@ -1,6 +1,7 @@
 ﻿package main
 
 import "core:fmt"
+import "core:log"
 
 STACK_MAX :: 256
 
@@ -15,23 +16,33 @@ VM :: struct {
     chunk: ^Chunk,
     ip: []u8,
     stack: [STACK_MAX]Value,
-    stackTop: u16,
+    stack_top: u16,
 }
 
-@private
+@(private = "file")
 vm: VM
 
-initVM :: proc() {
-    resetStack()
+init_vm :: proc() {
+    reset_stack()
 }
 
-freeVM :: proc() {
+free_vm :: proc() {
     
 }
 
-@private
-resetStack :: proc() {
-    vm.stackTop = 0
+@(private = "file")
+reset_stack :: proc() {
+    vm.stack_top = 0
+}
+
+@(private = "file")
+runtime_error :: proc(format: string, args: ..any) {
+    log.errorf(format, ..args)
+
+    instruction_index := len(vm.chunk.code) - len(vm.ip) - 1
+    line := vm.chunk.lines[instruction_index]
+    log.errorf("[line %v] in script\n", line)
+    reset_stack()
 }
 
 interpret :: proc(source: string) -> InterpretResult {
@@ -51,7 +62,7 @@ interpret :: proc(source: string) -> InterpretResult {
     return run()
 }
 
-@private
+@(private = "file")
 run :: proc() -> InterpretResult {
     readByte :: proc() -> (b: u8) {
         b = vm.ip[0]
@@ -59,16 +70,16 @@ run :: proc() -> InterpretResult {
         return
     }
 
-    readConstant :: proc() -> Value {
+    read_constant :: proc() -> Value {
         return vm.chunk.constants[readByte()]
     }
 
     for {
         when DEBUG_TRACE_EXECUTION {
             fmt.printf("          ")
-            for i in 0..<vm.stackTop {
+            for i in 0..<vm.stack_top {
                 fmt.printf("[ ")
-                printValue(vm.stack[i])
+                print_value(vm.stack[i])
                 fmt.printf(" ]")
             }
             fmt.println()
@@ -78,44 +89,90 @@ run :: proc() -> InterpretResult {
         instruction := cast(OpCode) readByte() 
         switch instruction {
         case .RETURN:
-            printValue(pop())
+            print_value(pop())
             fmt.println()
             return InterpretResult.OK
-        case .ADD:
-            b := pop()
-            a := pop()
-            push(a + b)
-        case .SUBTRACT:
-            b := pop()
-            a := pop()
-            push(a - b)
-        case .MULTIPLY:
-            b := pop()
-            a := pop()
-            push(a * b)
-        case .DIVIDE:
-            b := pop()
-            a := pop()
-            push(a / b)
         case .CONSTANT:
-            constant := readConstant()
+            constant := read_constant()
             push(constant)
+        case .NIL: push(NIL_VAL())
+        case .TRUE: push(BOOL_VAL(true))
+        case .FALSE: push(BOOL_VAL(false))
+        case .EQUAL:
+            a := pop()
+            b := pop()
+            push(BOOL_VAL(values_equal(a, b)))
+        case .GREATER:
+            check_numbers() or_return
+            b := AS_NUMBER(pop())
+            a := AS_NUMBER(pop())
+            push(BOOL_VAL(a > b))
+        case .LESS:
+            check_numbers() or_return
+            b := AS_NUMBER(pop())
+            a := AS_NUMBER(pop())
+            push(BOOL_VAL(a < b))
+        case .ADD:
+            check_numbers() or_return
+            b := AS_NUMBER(pop())
+            a := AS_NUMBER(pop())
+            push(NUMBER_VAL(a + b))
+        case .SUBTRACT:
+            check_numbers() or_return
+            b := AS_NUMBER(pop())
+            a := AS_NUMBER(pop())
+            push(NUMBER_VAL(a - b))
+        case .MULTIPLY:
+            check_numbers() or_return
+            b := AS_NUMBER(pop())
+            a := AS_NUMBER(pop())
+            push(NUMBER_VAL(a * b))
+        case .DIVIDE:
+            check_numbers() or_return
+            b := AS_NUMBER(pop())
+            a := AS_NUMBER(pop())
+            push(NUMBER_VAL(a / b))
+        case .NOT:
+            push(BOOL_VAL(is_falsey(pop())))
         case .NEGATE:
-            push(-pop())
+            if !IS_NUMBER(peek(0)) {
+                runtime_error("Operand must be a number.")
+                return InterpretResult.RUNTIME_ERROR
+            }
+            push(NUMBER_VAL(-AS_NUMBER(pop())))
         case:
             return InterpretResult.OK         
         }
     }
 }
 
-@private
-push :: proc(value: Value) {
-    vm.stack[vm.stackTop] = value
-    vm.stackTop += 1
+@(private = "file")
+check_numbers :: proc() -> InterpretResult {
+    if !IS_NUMBER(peek(0)) || !IS_NUMBER(peek(1)) {
+        runtime_error("Operands must be numbers.")
+        return .RUNTIME_ERROR
+    }
+    
+    return nil
 }
 
-@private
+@(private = "file")
+push :: proc(value: Value) {
+    vm.stack[vm.stack_top] = value
+    vm.stack_top += 1
+}
+
+@(private = "file")
 pop :: proc() -> Value {
-    vm.stackTop -= 1
-    return vm.stack[vm.stackTop]
+    vm.stack_top -= 1
+    return vm.stack[vm.stack_top]
+}
+
+@(private = "file")
+peek :: proc(distance: u16) -> Value {
+    return vm.stack[vm.stack_top - 1 - distance]
+}
+
+is_falsey :: proc(value: Value) -> bool  {
+    return IS_NIL(value) || (IS_BOOL(value) && !AS_BOOL(value))
 }

@@ -95,7 +95,7 @@ advance :: proc() -> rune {
     return utf8string.at(&scanner.buffer, scanner.current - 1)
 }
 
-@private
+@(private = "file")
 match :: proc(expected: rune) -> bool {
     if is_at_end() { return false }
     if utf8string.at(&scanner.buffer, scanner.current) != expected { return false }
@@ -103,12 +103,12 @@ match :: proc(expected: rune) -> bool {
     return true
 }
 
-@private
+@(private = "file")
 is_at_end :: proc() -> bool {
     return scanner.current >= utf8string.len(&scanner.buffer)-1
 }
 
-@private
+@(private = "file")
 make_token :: proc(type: TokenType) -> Token {
     return Token {
         type = type,
@@ -117,7 +117,7 @@ make_token :: proc(type: TokenType) -> Token {
     }
 }
 
-@private
+@(private = "file")
 error_token :: proc(message: string) -> Token {
     return Token {
         type = .ERROR,
@@ -126,7 +126,7 @@ error_token :: proc(message: string) -> Token {
     }
 }
 
-@private
+@(private = "file")
 skip_whitespace :: proc() {
     for {
         if is_at_end() { return }
@@ -153,18 +153,18 @@ skip_whitespace :: proc() {
     }
 }
 
-@private
+@(private = "file")
 peek :: proc() -> rune {
     return utf8string.at(&scanner.buffer, scanner.current)
 }
 
-@private
+@(private = "file")
 peek_next :: proc() -> rune {
     if is_at_end() { return ' ' }
     return utf8string.at(&scanner.buffer, scanner.current + 1)
 }
 
-@private
+@(private = "file")
 string_literal :: proc() -> Token {
     for peek() != '"' && !is_at_end() {
         if peek() == '\n' { scanner.line += 1 }
@@ -178,7 +178,7 @@ string_literal :: proc() -> Token {
     return make_token(.STRING)
 }
 
-@private
+@(private = "file")
 number_literal :: proc() -> Token {
     for unicode.is_digit(peek()) { advance() }
     
@@ -192,7 +192,7 @@ number_literal :: proc() -> Token {
     return make_token(.NUMBER)
 }
 
-@private
+@(private = "file")
 identifier :: proc() -> Token {
     for unicode.is_letter(peek()) || unicode.is_digit(peek()) {
         advance()
@@ -200,7 +200,7 @@ identifier :: proc() -> Token {
     return make_token(identifier_type())
 }
 
-@private
+@(private = "file")
 identifier_type :: proc() -> TokenType {
     switch utf8string.at(&scanner.buffer, scanner.start) {
     case 'a': return check_keyword("and", .AND)
@@ -236,7 +236,7 @@ identifier_type :: proc() -> TokenType {
 
 }
 
-@private
+@(private = "file")
 check_keyword :: proc(keyword: string, type: TokenType) -> TokenType {
     slice := utf8string.slice(&scanner.buffer, scanner.start, scanner.start + len(keyword))
     if strings.compare(string(slice), keyword) == 0 {

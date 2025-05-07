@@ -27,8 +27,18 @@ disassemble_instruction :: proc(chunk: ^Chunk, offset: int) -> int{
         return simple_instruction("OP_RETURN", offset)
     case .CONSTANT:
         return constant_instruction("OP_CONSTANT", chunk, offset)
-    case .NEGATE:
-        return simple_instruction("OP_NEGATE", offset)
+    case .NIL: 
+        return simple_instruction("OP_NIL", offset)
+    case .TRUE:
+        return simple_instruction("OP_TRUE", offset)
+    case .FALSE:
+        return simple_instruction("OP_FALSE", offset)
+    case .EQUAL: 
+        return simple_instruction("OP_EQUAL", offset)
+    case .GREATER:
+        return simple_instruction("OP_GREATER", offset)
+    case .LESS:
+        return simple_instruction("OP_LESS", offset)
     case .ADD:
         return simple_instruction("OP_ADD", offset)
     case .SUBTRACT:
@@ -37,23 +47,27 @@ disassemble_instruction :: proc(chunk: ^Chunk, offset: int) -> int{
         return simple_instruction("OP_MULTIPLY", offset)
     case .DIVIDE:
         return simple_instruction("OP_DIVIDE", offset)
+    case .NOT:
+        return simple_instruction("OP_NOT", offset)
+    case .NEGATE:
+        return simple_instruction("OP_NEGATE", offset)
     case:
         fmt.printf("Unknown opcode %d\n", instruction)
         return offset+1
     }
 }
 
-@private
+@(private = "file")
 simple_instruction :: proc(name: string, offset: int) -> int {
     fmt.printf("%s\n", name)
     return offset + 1
 }
 
-@private
+@(private = "file")
 constant_instruction :: proc(name: string, chunk: ^Chunk, offset: int) -> int {
     constant := chunk.code[offset + 1]
     fmt.printf("%s %v '", name, constant)
-    printValue(chunk.constants[constant])
+    print_value(chunk.constants[constant])
     fmt.printf("'\n")
     return offset + 2
 }
