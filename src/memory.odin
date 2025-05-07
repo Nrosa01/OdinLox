@@ -4,7 +4,7 @@ free_object :: proc(object: ^Obj) {
     switch object.type {
         case .String:
             obj_string := cast(^ObjString) object
-            delete(obj_string.chars)
+            delete(obj_string.str)
             free(obj_string)
         case: // unreachable
     }

@@ -50,7 +50,7 @@ values_equal :: proc(a, b: Value) -> bool {
         case .OBJ:
             obj_string_a := cast(^ObjString) AS_OBJ(a)
             obj_string_b := cast(^ObjString) AS_OBJ(b)
-            return slice.equal(obj_string_a.chars, obj_string_b.chars)
+            return obj_string_a.str == obj_string_b.str
         case: return false // unreachable
     }
 }

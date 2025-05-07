@@ -3,6 +3,7 @@
 import "core:fmt"
 import "core:log"
 import slice "core:slice"
+import strings "core:strings"
 
 STACK_MAX :: 256
 
@@ -183,16 +184,14 @@ is_falsey :: proc(value: Value) -> bool  {
     return IS_NIL(value) || (IS_BOOL(value) && !AS_BOOL(value))
 }
 
-take_string :: proc(chars: []rune) -> ^ObjString {
-    return allocate_string(chars)
+take_string :: proc(str: string) -> ^ObjString {
+    return allocate_string(str)
 }
 
 @(private = "file")
 concatenate :: proc() {
-    b_string := AS_STRING(pop()).chars
-    a_string := AS_STRING(pop()).chars
-
-    concatenated := slice.concatenate([][]rune{ a_string, b_string }) or_else panic("Failed to concatenate ut8 strings.")
+    b_string := AS_STRING(pop()).str
+    a_string := AS_STRING(pop()).str
     
-    push(OBJ_VAL(take_string(concatenated)))
+    push(OBJ_VAL(take_string(strings.concatenate([]string{ a_string, b_string }))))
 }

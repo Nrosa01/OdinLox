@@ -3,6 +3,7 @@
 import "core:slice"
 import "core:fmt"
 import utf8 "core:unicode/utf8"
+import strings "core:strings"
 
 OBJ_TYPE :: #force_inline proc(obj: Value) -> ObjType { return AS_OBJ(obj).type }
 
@@ -20,7 +21,7 @@ Obj :: struct {
 
 ObjString :: struct {
     using obj: Obj,
-    chars: []rune
+    str: string
 }
 
 @(private = "file")
@@ -28,22 +29,19 @@ is_obj_type :: proc(value: Value, type: ObjType) -> bool { return IS_OBJ(value) 
 
 print_object :: proc(object: ^Obj) {
     switch object.type {
-        case .String:
-            runes := (cast(^ObjString)object).chars
-            fmt.print(utf8.runes_to_string(runes))
+        case .String: fmt.print((cast(^ObjString)object).str)
         case: fmt.print(object)
     }
 }
 
-copy_string :: proc(chars: []rune) -> ^ObjString {
-    duplicate := make([]rune, len(chars))
-    copy(duplicate, chars)
+copy_string :: proc(str: string) -> ^ObjString {
+    duplicate := strings.clone(str) or_else panic("Couldn't copy string.")
     return allocate_string(duplicate)
 }
 
-allocate_string :: proc(chars: []rune) -> ^ObjString {
+allocate_string :: proc(str: string) -> ^ObjString {
     obj_string := cast(^ObjString) allocate_object(ObjString, .String)
-    obj_string.chars = chars
+    obj_string.str = str
     return obj_string
 }
 

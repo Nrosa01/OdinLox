@@ -187,8 +187,8 @@ number :: proc() {
 
 @(private = "file")
 string_proc :: proc() {
-    str := parser.previous.value[1:len(parser.previous.value)-1] // removes the "" from the string literal
-    emit_constant(OBJ_VAL(copy_string(str)))
+    runes := parser.previous.value[1:len(parser.previous.value)-1] // removes the "" from the string literal
+    emit_constant(OBJ_VAL(copy_string(utf8.runes_to_string(runes))))
 }
 
 @(private = "file")
