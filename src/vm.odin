@@ -1,4 +1,4 @@
-﻿package main
+package main
 
 import "core:fmt"
 import "core:log"
@@ -29,7 +29,7 @@ init_vm :: proc() {
     reset_stack()
 }
 
-free_vm :: proc() { 
+free_vm :: proc() {
     free_objects()   
 }
 
@@ -53,7 +53,6 @@ interpret :: proc(source: string) -> InterpretResult {
     defer free_chunk(&chunk)
     
     if !compile(source, &chunk) {
-        free_chunk(&chunk)
         return .COMPILE_ERROR
     }
  
@@ -67,14 +66,14 @@ interpret :: proc(source: string) -> InterpretResult {
 
 @(private = "file")
 run :: proc() -> InterpretResult {
-    readByte :: proc() -> (b: u8) {
-        b = vm.ip[0]
+    read_byte :: proc() -> u8 {
+        byte := vm.ip[0]
         vm.ip = vm.ip[1:]
-        return
+        return byte
     }
 
     read_constant :: proc() -> Value {
-        return vm.chunk.constants[readByte()]
+        return vm.chunk.constants[read_byte()]
     }
 
     for {
@@ -89,7 +88,7 @@ run :: proc() -> InterpretResult {
             disassemble_instruction(vm.chunk,  len(vm.chunk.code) - len(vm.ip))
         }
         
-        instruction := cast(OpCode) readByte() 
+        instruction := cast(OpCode) read_byte() 
         switch instruction {
         case .RETURN:
             print_value(pop())
@@ -118,11 +117,13 @@ run :: proc() -> InterpretResult {
         case .ADD:
             if IS_STRING(peek(0)) && IS_STRING(peek(1)) {
                 concatenate()
-            } else {
-                check_numbers() or_return
+            } else if (IS_NUMBER(peek(0)) && IS_NUMBER(peek(1))) {
                 b := AS_NUMBER(pop())
                 a := AS_NUMBER(pop())
                 push(NUMBER_VAL(a + b))
+            } else {
+                runtime_error("Operands must be two numbers or two strings.")
+                return .RUNTIME_ERROR
             }
         case .SUBTRACT:
             check_numbers() or_return

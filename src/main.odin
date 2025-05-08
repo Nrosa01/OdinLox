@@ -5,6 +5,8 @@ import "core:mem"
 import "core:os"
 import "core:bufio"
 import "core:io"
+import "core:log"
+import strings "core:strings"
 
 main :: proc() {
     when DEBUG_TRACE_EXECUTION {
@@ -17,6 +19,9 @@ main :: proc() {
 }
 
 execute :: proc() {
+    context.logger = log.create_console_logger()
+    defer log.destroy_console_logger(context.logger)
+    
     init_vm()
     defer(free_vm())
     
@@ -30,6 +35,8 @@ execute :: proc() {
         fmt.eprintln("Usage: clox [path]")
         os.exit(64)
     }
+    
+    free_all(context.temp_allocator)
 }
 
 repl :: proc() {
@@ -39,12 +46,17 @@ repl :: proc() {
     for {
         fmt.print(">  ")
 
-        buffer, err := bufio.reader_read_slice(&reader, '\n')
+        buffer, err := bufio.reader_read_string(&reader, '\n')
+        delete(buffer)
         if err != nil {
             fmt.println(err)
             break
         }
-        interpret(string(buffer[:]))
+        
+        if len(strings.trim_space(buffer[:])) == 0 do break
+        
+        interpret(buffer[:])
+        free_all(context.temp_allocator)
     }
 }
 

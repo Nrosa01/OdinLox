@@ -17,7 +17,7 @@ Scanner :: struct
 
 Token :: struct {
     type: TokenType,
-    value: []rune,
+    value: string,
     line: int,
 }
 
@@ -112,7 +112,7 @@ is_at_end :: proc() -> bool {
 make_token :: proc(type: TokenType) -> Token {
     return Token {
         type = type,
-        value = utf8.string_to_runes(utf8string.slice(&scanner.buffer, scanner.start, scanner.current)),
+        value = utf8string.slice(&scanner.buffer, scanner.start, scanner.current),
         line = scanner.line,
     }
 }
@@ -121,7 +121,7 @@ make_token :: proc(type: TokenType) -> Token {
 error_token :: proc(message: string) -> Token {
     return Token {
         type = .ERROR,
-        value = utf8.string_to_runes(message),
+        value = message,
         line = scanner.line,
     }
 }
@@ -238,8 +238,12 @@ identifier_type :: proc() -> TokenType {
 
 @(private = "file")
 check_keyword :: proc(keyword: string, type: TokenType) -> TokenType {
+    // Neccesary check to avoid overflow, specially in repl mode. It also speeds comparisons a bit.
+    // utf8string.len(&scanner.buffer) < len(keyword) is not needed now.
+    if scanner.current - scanner.start != len(keyword) do return .IDENTIFIER 
+
     slice := utf8string.slice(&scanner.buffer, scanner.start, scanner.start + len(keyword))
-    if strings.compare(string(slice), keyword) == 0 {
+    if strings.compare(slice, keyword) == 0 {
         return type
     }
 

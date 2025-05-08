@@ -6,6 +6,8 @@
 import "core:log"
 import utf8 "core:unicode/utf8"
 import strconv "core:strconv"
+import "core:strings"
+import "core:fmt"
 
 Parser :: struct {
     current: Token,
@@ -68,7 +70,7 @@ advance :: proc() {
             break
         }
         
-        error_at_current(utf8.runes_to_string(parser.current.value))
+        error_at_current(parser.current.value)
     }
 }
 
@@ -83,15 +85,18 @@ error :: proc(message: string) {
 error_at :: proc(token: ^Token, message: string) {
     if parser.panicMode  { return }
     parser.panicMode = true
-    log.errorf("[line %v] Error", token.line)
+
+    str_builder := strings.builder_make()
+    defer strings.builder_destroy(&str_builder)
+
+    fmt.sbprintf(&str_builder, "[line %v] Error", token.line)
     
-    if token.type == .EOF {
-        log.errorf(" at end")
-    } else if token.type != .ERROR {
-        log.errorf(" at '%v'", token.value)
-    }
+    if token.type == .EOF do strings.write_string(&str_builder, " at end")
+    else if token.type != .ERROR do fmt.sbprintf(&str_builder ," at '%v'", token.value)
+
+    fmt.sbprintf(&str_builder,": %v", message)
     
-    log.errorf(": %v\n", message)
+    log.error(strings.to_string(str_builder))
     parser.hadError = true
 }
 
@@ -181,14 +186,14 @@ grouping :: proc() {
 
 @(private = "file")
 number :: proc() {
-    value := strconv.atof(utf8.runes_to_string(parser.previous.value))
+    value := strconv.atof(parser.previous.value)
     emit_constant(NUMBER_VAL(value))
 }
 
 @(private = "file")
 string_proc :: proc() {
     runes := parser.previous.value[1:len(parser.previous.value)-1] // removes the "" from the string literal
-    emit_constant(OBJ_VAL(copy_string(utf8.runes_to_string(runes))))
+    emit_constant(OBJ_VAL(copy_string(runes)))
 }
 
 @(private = "file")
