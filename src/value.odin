@@ -20,19 +20,19 @@ Value :: struct {
     },
 }
 
-IS_BOOL   :: #force_inline proc(value: Value) -> bool { return value.type == .BOOL }
-IS_NIL    :: #force_inline proc(value: Value) -> bool { return value.type == .NIL }
-IS_NUMBER :: #force_inline proc(value: Value) -> bool { return value.type == .NUMBER }
-IS_OBJ :: #force_inline proc(value: Value) -> bool { return value.type == .OBJ }
+IS_BOOL   :: #force_inline proc "contextless" (value: Value) -> bool { return value.type == .BOOL }
+IS_NIL    :: #force_inline proc "contextless" (value: Value) -> bool { return value.type == .NIL }
+IS_NUMBER :: #force_inline proc "contextless" (value: Value) -> bool { return value.type == .NUMBER }
+IS_OBJ :: #force_inline proc "contextless" (value: Value) -> bool { return value.type == .OBJ }
 
-AS_OBJ    :: #force_inline proc(value: Value) -> ^Obj { return value.variant.(^Obj) }
-AS_BOOL   :: #force_inline proc(value: Value) -> bool { return value.variant.(bool) }
-AS_NUMBER :: #force_inline proc(value: Value) -> f64  { return value.variant.(f64) }
+AS_OBJ    :: #force_inline proc "contextless" (value: Value) -> ^Obj { return value.variant.(^Obj) }
+AS_BOOL   :: #force_inline proc "contextless" (value: Value) -> bool { return value.variant.(bool) }
+AS_NUMBER :: #force_inline proc "contextless" (value: Value) -> f64  { return value.variant.(f64) }
 
-BOOL_VAL   :: #force_inline proc(value: bool) -> Value { return Value{.BOOL, value}}
-NIL_VAL    :: #force_inline proc()            -> Value { return Value{.NIL, nil}}
-NUMBER_VAL :: #force_inline proc(value: f64)  -> Value { return Value{.NUMBER, value}}
-OBJ_VAL :: #force_inline proc(value: ^Obj)  -> Value { return Value{.OBJ, value}}
+BOOL_VAL   :: #force_inline proc "contextless" (value: bool) -> Value { return Value{.BOOL, value}}
+NIL_VAL    :: #force_inline proc "contextless" ()            -> Value { return Value{.NIL, nil}}
+NUMBER_VAL :: #force_inline proc "contextless" (value: f64)  -> Value { return Value{.NUMBER, value}}
+OBJ_VAL :: #force_inline proc "contextless" (value: ^Obj)  -> Value { return Value{.OBJ, value}}
 
 print_value :: proc(value: Value) {
     #partial switch value.type {
@@ -47,10 +47,7 @@ values_equal :: proc(a, b: Value) -> bool {
         case .BOOL:   return AS_BOOL(a) == AS_BOOL(b)
         case .NIL:    return true
         case .NUMBER: return AS_NUMBER(a) == AS_NUMBER(b)
-        case .OBJ:
-            obj_string_a := cast(^ObjString) AS_OBJ(a)
-            obj_string_b := cast(^ObjString) AS_OBJ(b)
-            return obj_string_a.str == obj_string_b.str
+        case .OBJ: return AS_OBJ(a) == AS_OBJ(b)
         case: return false // unreachable
     }
 }

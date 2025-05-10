@@ -4,6 +4,7 @@ import "core:slice"
 import "core:fmt"
 import utf8 "core:unicode/utf8"
 import strings "core:strings"
+import hash "core:hash"
 
 OBJ_TYPE :: #force_inline proc(obj: Value) -> ObjType { return AS_OBJ(obj).type }
 
@@ -21,7 +22,8 @@ Obj :: struct {
 
 ObjString :: struct {
     using obj: Obj,
-    str: string
+    str: string,
+    hash: u32,
 }
 
 @(private = "file")
@@ -29,20 +31,44 @@ is_obj_type :: proc(value: Value, type: ObjType) -> bool { return IS_OBJ(value) 
 
 print_object :: proc(object: ^Obj) {
     switch object.type {
-        case .String: fmt.print((cast(^ObjString)object).str)
+        case .String: fmt.printf("\"%v\"", (cast(^ObjString)object).str)
         case: fmt.print(object)
     }
 }
 
 copy_string :: proc(str: string) -> ^ObjString {
     duplicate := strings.clone(str) or_else panic("Couldn't copy string.")
-    return allocate_string(duplicate)
+    hash := hash_string(duplicate)
+    
+    interned := table_find_string(&vm.strings, str, hash)
+    if interned != nil do return interned
+    
+    return allocate_string(duplicate, hash)
 }
 
-allocate_string :: proc(str: string) -> ^ObjString {
+allocate_string :: proc(str: string, hash: u32) -> ^ObjString {
     obj_string := cast(^ObjString) allocate_object(ObjString, .String)
     obj_string.str = str
+    obj_string.hash = hash
+    table_set(&vm.strings, obj_string, NIL_VAL())
     return obj_string
+}
+
+hash_string :: proc "contextless" (str: string) -> u32 {
+    bytes := transmute([]u8)str
+    return hash.fnv32a(bytes) // I'm not using the book algorithm as it's the same as this
+}
+
+take_string :: proc(str: string) -> ^ObjString {
+    hash := hash_string(str)
+
+    interned := table_find_string(&vm.strings, str, hash)
+    if interned != nil {
+        delete(str)
+        return interned
+    }
+    
+    return allocate_string(str, hash)
 }
 
 allocate_object :: proc($T: typeid, type: ObjType) -> ^T {

@@ -19,7 +19,8 @@ VM :: struct {
     ip: []u8,
     stack: [STACK_MAX]Value,
     stack_top: u16,
-    objects: ^Obj
+    strings: Table,
+    objects: ^Obj,
 }
 
 @(private = "package")
@@ -183,10 +184,6 @@ peek :: proc(distance: u16) -> Value {
 
 is_falsey :: proc(value: Value) -> bool  {
     return IS_NIL(value) || (IS_BOOL(value) && !AS_BOOL(value))
-}
-
-take_string :: proc(str: string) -> ^ObjString {
-    return allocate_string(str)
 }
 
 @(private = "file")

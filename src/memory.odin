@@ -14,7 +14,7 @@ free_objects :: proc() {
     object := vm.objects
     
     for object != nil {
-        next :=  object.next
+        next := object.next
         free_object(object)
         object = next
     }
