@@ -2,9 +2,9 @@
 
 import "core:slice"
 import "core:fmt"
-import utf8 "core:unicode/utf8"
-import strings "core:strings"
-import hash "core:hash"
+import "core:unicode/utf8"
+import "core:strings"
+import "core:hash"
 
 OBJ_TYPE :: #force_inline proc(obj: Value) -> ObjType { return AS_OBJ(obj).type }
 

@@ -2,8 +2,8 @@ package main
 
 import "core:fmt"
 import "core:log"
-import slice "core:slice"
-import strings "core:strings"
+import "core:slice"
+import "core:strings"
 
 STACK_MAX :: 256
 

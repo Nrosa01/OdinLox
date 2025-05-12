@@ -4,8 +4,8 @@
 //import "core:fmt"
 //import "core:os"
 import "core:log"
-import utf8 "core:unicode/utf8"
-import strconv "core:strconv"
+import "core:unicode/utf8"
+import "core:strconv"
 import "core:strings"
 import "core:fmt"
 
@@ -78,11 +78,11 @@ error_at_current :: proc(message: string) {
     error_at(&parser.previous, message)
 }
 
-error :: proc(message: string) {
-    error_at(&parser.previous, message)
+error :: proc(message: string, loc := #caller_location) {
+    error_at(&parser.previous, message, loc)
 }
 
-error_at :: proc(token: ^Token, message: string) {
+error_at :: proc(token: ^Token, message: string, loc := #caller_location) {
     if parser.panicMode  { return }
     parser.panicMode = true
 
@@ -96,7 +96,7 @@ error_at :: proc(token: ^Token, message: string) {
 
     fmt.sbprintf(&str_builder,": %v", message)
     
-    log.error(strings.to_string(str_builder))
+    log.error(strings.to_string(str_builder), location = loc)
     parser.hadError = true
 }
 
@@ -256,7 +256,7 @@ rules := []ParseRule {
 @(private = "file")
 parse_precedence :: proc(precedence: Precedence) {
     advance()
-    
+    fmt.println(parser.previous.value)
     prefix_rule := get_rule(parser.previous.type).prefix
     if prefix_rule == nil {
         error("Expect expression.")

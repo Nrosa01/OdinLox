@@ -3,10 +3,8 @@ package main
 import "core:fmt"
 import "core:mem"
 import "core:os"
-import "core:bufio"
-import "core:io"
 import "core:log"
-import strings "core:strings"
+import "core:strings"
 
 main :: proc() {
     when DEBUG_TRACE_EXECUTION {
@@ -40,22 +38,22 @@ execute :: proc() {
 }
 
 repl :: proc() {
-    buffer: [1024]u8
-    reader: bufio.Reader
-    bufio.reader_init_with_buf(&reader, io.to_reader(os.stream_from_handle(os.stdin)), buffer[:])
+    buffer: [1024]byte
+   
     for {
         fmt.print(">  ")
 
-        buffer, err := bufio.reader_read_string(&reader, '\n')
-        delete(buffer)
+        bytes_written, err := os.read(os.stdin, buffer[:])
         if err != nil {
             fmt.println(err)
             break
         }
+        str := string(buffer[:bytes_written])
+        trimmed := strings.trim_space(str) 
         
-        if len(strings.trim_space(buffer[:])) == 0 do break
+        if len(trimmed) == 0 do break
         
-        interpret(buffer[:])
+        interpret(str)
         free_all(context.temp_allocator)
     }
 }

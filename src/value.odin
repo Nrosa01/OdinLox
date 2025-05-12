@@ -2,7 +2,7 @@
 
 import "core:fmt"
 import "core:mem"
-import slice "core:slice"
+import "core:slice"
 
 ValueType :: enum {
     BOOL,

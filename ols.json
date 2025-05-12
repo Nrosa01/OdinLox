@@ -6,8 +6,9 @@
 	"enable_document_symbols": true,
 	"enable_hover": true,
 	"enable_snippets": true,
-    "enable_inlay_hints": true,
+    "enable_inlay_hints": false,
 	"enable_procedure_context": true,
 	"checker_args": "-vet -strict-style",
-	"verbose": true
+	"verbose": true,
+	"enable_procedure_snippet": true
 }
