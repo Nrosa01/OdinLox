@@ -5,6 +5,10 @@ OpCode :: enum u8 {
     NIL,
     TRUE, 
     FALSE,
+    POP,
+    GET_GLOBAL,
+    DEFINE_GLOBAL,
+    SET_GLOBAL,
     EQUAL,
     GREATER,
     LESS,
@@ -14,6 +18,7 @@ OpCode :: enum u8 {
     DIVIDE,
     NOT,
     NEGATE,
+    PRINT,
     RETURN,
 }
 

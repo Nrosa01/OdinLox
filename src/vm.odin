@@ -19,6 +19,7 @@ VM :: struct {
     ip: []u8,
     stack: [STACK_MAX]Value,
     stack_top: u16,
+    globals: Table,
     strings: Table,
     objects: ^Obj,
 }
@@ -31,7 +32,9 @@ init_vm :: proc() {
 }
 
 free_vm :: proc() {
-    free_objects()   
+    free_objects()
+    free_table(&vm.globals)
+    free_table(&vm.strings)
 }
 
 @(private = "file")
@@ -52,11 +55,11 @@ runtime_error :: proc(format: string, args: ..any) {
 interpret :: proc(source: string) -> InterpretResult {
     chunk: Chunk
     defer free_chunk(&chunk)
-    
+
     if !compile(source, &chunk) {
         return .COMPILE_ERROR
     }
- 
+
     vm.chunk = &chunk
     vm.ip = vm.chunk.code[:]
 
@@ -77,30 +80,55 @@ run :: proc() -> InterpretResult {
         return vm.chunk.constants[read_byte()]
     }
 
+    read_string :: proc() -> ^ObjString {
+        return AS_STRING(read_constant())
+    }
+
     for {
         when DEBUG_TRACE_EXECUTION {
             fmt.printf("          ")
-            for i in 0..<vm.stack_top {
+            for i in 0 ..< vm.stack_top {
                 fmt.printf("[ ")
                 print_value(vm.stack[i])
                 fmt.printf(" ]")
             }
             fmt.println()
-            disassemble_instruction(vm.chunk,  len(vm.chunk.code) - len(vm.ip))
+            disassemble_instruction(vm.chunk, len(vm.chunk.code) - len(vm.ip))
         }
-        
-        instruction := cast(OpCode) read_byte() 
+
+        instruction := cast(OpCode) read_byte()
         switch instruction {
-        case .RETURN:
+        case .PRINT:
             print_value(pop())
             fmt.println()
-            return InterpretResult.OK
+        case .RETURN:
+            return .OK
         case .CONSTANT:
             constant := read_constant()
             push(constant)
         case .NIL: push(NIL_VAL())
         case .TRUE: push(BOOL_VAL(true))
         case .FALSE: push(BOOL_VAL(false))
+        case .POP: pop()
+        case .GET_GLOBAL:
+            name := read_string()
+            value: Value
+            ok: bool
+            if value, ok = table_get(&vm.globals, name); !ok {
+                runtime_error("Undefined variable '%s'.", name.str)
+                return .RUNTIME_ERROR
+            }
+            push(value)
+        case .DEFINE_GLOBAL:
+            name := read_string()
+            table_set(&vm.globals, name, peek(0))
+        case .SET_GLOBAL:
+            name := read_string()
+            if table_set(&vm.globals, name, peek(0)) {
+                table_delete(&vm.globals, name)
+                runtime_error("Undefined variable '%s'.", name.str)
+                return .RUNTIME_ERROR
+            }
         case .EQUAL:
             a := pop()
             b := pop()
@@ -146,11 +174,11 @@ run :: proc() -> InterpretResult {
         case .NEGATE:
             if !IS_NUMBER(peek(0)) {
                 runtime_error("Operand must be a number.")
-                return InterpretResult.RUNTIME_ERROR
+                return .RUNTIME_ERROR
             }
             push(NUMBER_VAL(-AS_NUMBER(pop())))
         case:
-            return InterpretResult.OK         
+            return .OK
         }
     }
 }
@@ -161,7 +189,7 @@ check_numbers :: proc() -> InterpretResult {
         runtime_error("Operands must be numbers.")
         return .RUNTIME_ERROR
     }
-    
+
     return nil
 }
 
@@ -182,7 +210,7 @@ peek :: proc(distance: u16) -> Value {
     return vm.stack[vm.stack_top - 1 - distance]
 }
 
-is_falsey :: proc(value: Value) -> bool  {
+is_falsey :: proc(value: Value) -> bool {
     return IS_NIL(value) || (IS_BOOL(value) && !AS_BOOL(value))
 }
 
@@ -190,6 +218,6 @@ is_falsey :: proc(value: Value) -> bool  {
 concatenate :: proc() {
     b_string := AS_STRING(pop()).str
     a_string := AS_STRING(pop()).str
-    
+
     push(OBJ_VAL(take_string(strings.concatenate([]string{ a_string, b_string }))))
 }

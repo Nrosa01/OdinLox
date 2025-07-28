@@ -2,6 +2,7 @@
 
 import "core:mem"
 import "core:strings"
+import fmt "core:fmt"
 
 TABLE_MAX_LOAD :: 0.75
 
@@ -29,7 +30,7 @@ table_set :: proc (table: ^Table, key: ^ObjString, value: Value) -> bool {
     }
 
     entry := find_entry(table.entries, table.capacity, key)
-    is_new_key := entry !=  nil
+    is_new_key := entry.key == nil
     if is_new_key && IS_NIL(entry.value) do table.count += 1
     
     entry.key = key

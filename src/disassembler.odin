@@ -23,6 +23,8 @@ disassemble_instruction :: proc(chunk: ^Chunk, offset: int) -> int{
     
     instruction := cast(OpCode)chunk.code[offset]
     switch instruction {
+    case .PRINT:
+        return simple_instruction("OP_PRINT", offset)
     case .RETURN:
         return simple_instruction("OP_RETURN", offset)
     case .CONSTANT:
@@ -33,6 +35,14 @@ disassemble_instruction :: proc(chunk: ^Chunk, offset: int) -> int{
         return simple_instruction("OP_TRUE", offset)
     case .FALSE:
         return simple_instruction("OP_FALSE", offset)
+    case .POP:
+        return simple_instruction("OP_POP", offset)
+    case .GET_GLOBAL:
+        return constant_instruction("OP_GET_GLOBAL", chunk, offset)
+    case .SET_GLOBAL:
+        return constant_instruction("OP_SET_GLOBAL", chunk, offset)
+    case .DEFINE_GLOBAL:
+        return constant_instruction("OP_DEFINE_GLOBAL", chunk, offset)
     case .EQUAL: 
         return simple_instruction("OP_EQUAL", offset)
     case .GREATER:
