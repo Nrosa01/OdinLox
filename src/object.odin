@@ -39,12 +39,16 @@ print_object :: proc(object: ^Obj) {
 copy_string :: proc(str: string) -> ^ObjString {
     duplicate := strings.clone(str) or_else panic("Couldn't copy string.")
     hash := hash_string(duplicate)
-    
+
     interned := table_find_string(&vm.strings, str, hash)
-    if interned != nil do return interned
-    
+    if interned != nil {
+        delete(duplicate)
+        return interned
+    }
+
     return allocate_string(duplicate, hash)
 }
+
 
 allocate_string :: proc(str: string, hash: u32) -> ^ObjString {
     obj_string := cast(^ObjString) allocate_object(ObjString, .String)

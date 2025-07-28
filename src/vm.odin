@@ -110,6 +110,9 @@ run :: proc() -> InterpretResult {
         case .TRUE: push(BOOL_VAL(true))
         case .FALSE: push(BOOL_VAL(false))
         case .POP: pop()
+        case .GET_LOCAL:
+            slot := read_byte()
+            push(vm.stack[slot])
         case .GET_GLOBAL:
             name := read_string()
             value: Value
@@ -122,6 +125,10 @@ run :: proc() -> InterpretResult {
         case .DEFINE_GLOBAL:
             name := read_string()
             table_set(&vm.globals, name, peek(0))
+            pop()
+        case .SET_LOCAL:
+            slot := read_byte()
+            vm.stack[slot] = peek(0)
         case .SET_GLOBAL:
             name := read_string()
             if table_set(&vm.globals, name, peek(0)) {

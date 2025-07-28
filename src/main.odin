@@ -59,10 +59,10 @@ repl :: proc() {
 }
 
 run_file :: proc (path: string) {
-    source, err := os.read_entire_file(path)
+    source, err := os.read_entire_file_or_err(path)
     
-    if err {
-        fmt.eprintf("Couldn not open file \"%v\".\n", path)
+    if err != nil {
+        fmt.eprintf("Could not open file \"%v\". Error: %v\n", path, err)
         os.exit(74)
     }
     

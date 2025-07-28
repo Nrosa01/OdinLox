@@ -38,7 +38,21 @@ ParseRule :: struct {
     precedence: Precedence
 }
 
+U8_MAX :: cast(int)max(u8)
+
+Local :: struct {
+    name: Token,
+    depth: int,
+}
+
+Compiler :: struct {
+    locals: [U8_MAX + 1]Local,
+    local_count: int,
+    scope_depth: int,
+}
+
 parser: Parser
+current: ^Compiler
 compilingChunk: ^Chunk
 
 @(private = "file")
@@ -48,6 +62,8 @@ current_chunk :: proc() -> ^Chunk {
 
 compile :: proc(source: string, chunk: ^Chunk) -> bool {
     init_scanner(source)
+    compiler: Compiler
+    init_compiler(&compiler)
     compilingChunk = chunk
 
     parser.hadError = false
@@ -164,6 +180,21 @@ end_compiler :: proc() {
 }
 
 @(private = "file")
+begin_scope :: proc() {
+    current.scope_depth += 1
+}
+
+@(private = "file")
+end_scope :: proc() {
+    current.scope_depth -= 1
+
+    for current.local_count > 0 && current.locals[current.local_count - 1].depth > current.scope_depth {
+        emit_byte(OpCode.POP)
+        current.local_count -= 1
+    }
+}
+
+@(private = "file")
 binary :: proc(can_assign: bool) {
     operator_type := parser.previous.type
     rule := get_rule(operator_type)
@@ -214,13 +245,22 @@ string_proc :: proc(can_assign: bool) {
 
 @(private = "file")
 named_variable :: proc(name: ^Token, can_assign: bool) {
-    arg := identifier_constant(name)
-    
+    get_op, set_op: OpCode
+    arg := resolve_local(current, name)
+    if arg != -1 {
+        get_op = .GET_LOCAL
+        set_op = .SET_LOCAL
+    } else {
+        arg = int(identifier_constant(name))
+        get_op = .GET_GLOBAL
+        set_op = .SET_GLOBAL
+    }
+
     if can_assign && match(.EQUAL) {
         expression()
-        emit_bytes(.SET_GLOBAL, arg)
+        emit_bytes(set_op, u8(arg))
     } else {
-        emit_bytes(.GET_GLOBAL, arg)
+        emit_bytes(get_op, u8(arg))
     }
 }
 
@@ -303,7 +343,7 @@ parse_precedence :: proc(precedence: Precedence) {
         infix_rule := get_rule(parser.previous.type).infix
         infix_rule(can_assign)
     }
-    
+
     if can_assign && match(.EQUAL) {
         error("Invalid assignment target.")
     }
@@ -315,13 +355,76 @@ identifier_constant :: proc(name: ^Token) -> u8 {
 }
 
 @(private = "file")
+identifiers_equal :: proc(a:  ^Token, b: ^Token) -> bool {
+    if len(a.value) != len(b.value) do return false
+    return strings.compare(a.value, b.value) == 0
+}
+
+@(private = "file")
+resolve_local :: proc(compiler: ^Compiler, name: ^Token) -> int {
+    for i := compiler.local_count - 1; i >= 0; i -= 1 {
+        local := &compiler.locals[i]
+        if identifiers_equal(name, &local.name) {
+            if local.depth == -1 do error("Can't read local variable in its own initializer.")
+            return i
+        }
+    }
+
+    return -1
+}
+
+@(private = "file")
+add_local :: proc(name: Token) {
+    if current.local_count == U8_MAX + 1 {
+        error("Too many local variables in function.")
+        return
+    }
+
+    local := &current.locals[current.local_count]
+    current.local_count += 1
+
+    local.name = name
+    local.depth = -1
+}
+
+@(private = "file")
+declare_variable :: proc() {
+    if current.scope_depth == 0 do return
+
+    name := &parser.previous
+
+    for i := current.local_count - 1; i >= 0; i -= 1 {
+        local := &current.locals[i]
+        if local.depth != -1 && local.depth < current.scope_depth do break
+
+        if identifiers_equal(name, &local.name) do error("Already a variable with this name in this scope.")
+    }
+
+    add_local(name^)
+}
+
+@(private = "file")
 parse_variable :: proc(error_message: string) -> u8 {
     consume(.IDENTIFIER, error_message)
+
+    declare_variable()
+    if current.scope_depth > 0 do return 0
+
     return identifier_constant(&parser.previous)
 }
 
 @(private = "file")
+mark_initialized :: proc() {
+    current.locals[current.local_count - 1].depth = current.scope_depth
+}
+
+@(private = "file")
 define_variable :: proc(global: u8) {
+    if current.scope_depth > 0 {
+        mark_initialized()
+        return
+    }
+
     emit_bytes(.DEFINE_GLOBAL, global)
 }
 
@@ -332,8 +435,6 @@ get_rule :: proc(type: TokenType) -> ^ParseRule {
 emit_return :: proc() {
     write_chunk(current_chunk(), OpCode.RETURN, parser.previous.line)
 }
-
-U8_MAX :: cast(int)max(u8)
 
 @(private = "file")
 make_constant :: proc(value: Value) -> u8 {
@@ -351,23 +452,36 @@ emit_constant :: proc(value: Value) {
     emit_bytes(.CONSTANT, make_constant(value))
 }
 
+init_compiler :: proc(compiler: ^Compiler) {
+    compiler.local_count = 0
+    compiler.scope_depth = 0
+    current = compiler
+}
+
 @(private = "file")
 expression :: proc() {
     parse_precedence(.ASSIGNMENT)
 }
 
 @(private = "file")
+block :: proc() {
+    for !check(.RIGHT_BRACE) && !check(.EOF) do declaration()
+
+    consume(.RIGHT_BRACE, "Expect '}' after block.")
+}
+
+@(private = "file")
 var_declaration :: proc() {
     global := parse_variable("Expect variable name.")
-    
+
     if match(.EQUAL) {
         expression()
     } else {
         emit_byte(OpCode.NIL)
     }
-    
+
     consume(.SEMICOLON, "Expect ';' after variable declaration.")
-    
+
     define_variable(global)
 }
 
@@ -422,6 +536,10 @@ declaration :: proc() {
 statement :: proc() {
     if match(.PRINT) {
         print_statement()
+    } else if  match(.LEFT_BRACE) {
+        begin_scope()
+        block()
+        end_scope()
     } else {
         expression_statement()
     }
