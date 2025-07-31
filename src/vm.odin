@@ -16,7 +16,7 @@ InterpretResult :: enum
 
 VM :: struct {
     chunk: ^Chunk,
-    ip: []u8,
+    ip: int,
     stack: [STACK_MAX]Value,
     stack_top: u16,
     globals: Table,
@@ -46,7 +46,7 @@ reset_stack :: proc() {
 runtime_error :: proc(format: string, args: ..any) {
     log.errorf(format, ..args)
 
-    instruction_index := len(vm.chunk.code) - len(vm.ip) - 1
+    instruction_index := len(vm.chunk.code) - vm.ip - 1
     line := vm.chunk.lines[instruction_index]
     log.errorf("[line %v] in script\n", line)
     reset_stack()
@@ -61,7 +61,7 @@ interpret :: proc(source: string) -> InterpretResult {
     }
 
     vm.chunk = &chunk
-    vm.ip = vm.chunk.code[:]
+    vm.ip = 0
 
     // Surprisingly, it seems that "run" executes before the deferred statament
     // This is pretty useful and allows cleaner code
@@ -71,19 +71,21 @@ interpret :: proc(source: string) -> InterpretResult {
 @(private = "file")
 run :: proc() -> InterpretResult {
     read_byte :: proc() -> u8 {
-        byte := vm.ip[0]
-        vm.ip = vm.ip[1:]
+        byte := current_chunk().code[vm.ip]
+        vm.ip += 1
         return byte
     }
 
-    read_constant :: proc() -> Value {
-        return vm.chunk.constants[read_byte()]
+    read_constant :: proc() -> Value { return vm.chunk.constants[read_byte()] }
+
+    read_string :: proc() -> ^ObjString { return AS_STRING(read_constant()) }
+
+    read_short :: proc() -> u16 {
+        vm.ip += 2
+        return u16((current_chunk().code[vm.ip - 2] << 8) | current_chunk().code[vm.ip - 1])
     }
 
-    read_string :: proc() -> ^ObjString {
-        return AS_STRING(read_constant())
-    }
-
+    
     for {
         when DEBUG_TRACE_EXECUTION {
             fmt.printf("          ")
@@ -93,7 +95,7 @@ run :: proc() -> InterpretResult {
                 fmt.printf(" ]")
             }
             fmt.println()
-            disassemble_instruction(vm.chunk, len(vm.chunk.code) - len(vm.ip))
+            disassemble_instruction(vm.chunk, len(vm.chunk.code) - vm.ip)
         }
 
         instruction := cast(OpCode) read_byte()
@@ -101,6 +103,15 @@ run :: proc() -> InterpretResult {
         case .PRINT:
             print_value(pop())
             fmt.println()
+        case .JUMP:
+            offset := read_short()
+            vm.ip += int(offset)
+        case .JUMP_IF_FALSE:
+            offset := read_short()
+            if is_falsey(peek(0)) do vm.ip += int(offset)
+        case .LOOP:
+            offset := read_short()
+            vm.ip -= int(offset)
         case .RETURN:
             return .OK
         case .CONSTANT:

@@ -1,4 +1,4 @@
-﻿package main
+package main
 
 //import "core:log"
 //import "core:fmt"
@@ -39,6 +39,7 @@ ParseRule :: struct {
 }
 
 U8_MAX :: cast(int)max(u8)
+U16_MAX :: cast(int)max(u16)
 
 Local :: struct {
     name: Token,
@@ -55,7 +56,6 @@ parser: Parser
 current: ^Compiler
 compilingChunk: ^Chunk
 
-@(private = "file")
 current_chunk :: proc() -> ^Chunk {
     return compilingChunk
 }
@@ -75,6 +75,7 @@ compile :: proc(source: string, chunk: ^Chunk) -> bool {
         declaration()
     }
 
+    consume(.EOF, "Expect end of expression.")
     end_compiler()
     return !parser.hadError
 }
@@ -169,6 +170,23 @@ emit_bytes :: proc {
     emit_bytes_op_code
 }
 
+emit_loop :: proc(loop_start: int) {
+    emit_byte(OpCode.LOOP)
+
+    offset := len(current_chunk().code) - loop_start + 2
+    if offset > U16_MAX do error("Loop body too large.")
+
+    emit_byte(u8((offset >> 8) & 0xff))
+    emit_byte(u8(offset & 0xff))
+}
+
+emit_jump :: proc(instruction: OpCode) -> int {
+    emit_byte(instruction)
+    emit_byte(0xff)
+    emit_byte(0xff)
+    return len(current_chunk().code) - 2
+}
+
 end_compiler :: proc() {
     emit_return()
 
@@ -235,6 +253,18 @@ grouping :: proc(can_assign: bool) {
 number :: proc(can_assign: bool) {
     value := strconv.atof(parser.previous.value)
     emit_constant(NUMBER_VAL(value))
+}
+
+@(private = "file")
+or_ :: proc(can_assign: bool) {
+    else_jump := emit_jump(.JUMP_IF_FALSE)
+    end_jump := emit_jump(.JUMP)
+
+    patch_jump(else_jump)
+    emit_byte(OpCode.POP)
+
+    parse_precedence(.OR)
+    patch_jump(end_jump)
 }
 
 @(private = "file")
@@ -306,7 +336,7 @@ rules := []ParseRule {
     TokenType.IDENTIFIER    = ParseRule{ variable, nil, .NONE },
     TokenType.STRING        = ParseRule{ string_proc, nil, .NONE },
     TokenType.NUMBER        = ParseRule{ number, nil, .NONE },
-    TokenType.AND           = ParseRule{ nil, nil, .NONE },
+    TokenType.AND           = ParseRule{ nil, and_, .AND },
     TokenType.CLASS         = ParseRule{ nil, nil, .NONE },
     TokenType.ELSE          = ParseRule{ nil, nil, .NONE },
     TokenType.FALSE         = ParseRule{ literal, nil, .NONE },
@@ -314,7 +344,7 @@ rules := []ParseRule {
     TokenType.FUN           = ParseRule{ nil, nil, .NONE },
     TokenType.IF            = ParseRule{ nil, nil, .NONE },
     TokenType.NIL           = ParseRule{ literal, nil, .NONE },
-    TokenType.OR            = ParseRule{ nil, nil, .NONE },
+    TokenType.OR            = ParseRule{ nil, or_, .OR },
     TokenType.PRINT         = ParseRule{ nil, nil, .NONE },
     TokenType.RETURN        = ParseRule{ nil, nil, .NONE },
     TokenType.SUPER         = ParseRule{ nil, nil, .NONE },
@@ -428,6 +458,16 @@ define_variable :: proc(global: u8) {
     emit_bytes(.DEFINE_GLOBAL, global)
 }
 
+@(private = "file")
+and_ :: proc(can_assign: bool) {
+    end_jump := emit_jump(.JUMP_IF_FALSE)
+
+    emit_byte(OpCode.POP)
+    parse_precedence(.AND)
+
+    patch_jump(end_jump)
+}
+
 get_rule :: proc(type: TokenType) -> ^ParseRule {
     return &rules[type]
 }
@@ -450,6 +490,17 @@ make_constant :: proc(value: Value) -> u8 {
 @(private = "file")
 emit_constant :: proc(value: Value) {
     emit_bytes(.CONSTANT, make_constant(value))
+}
+
+@(private = "file")
+patch_jump :: proc(offset: int) {
+// -2 to adjust for the bytecode for the jump offset itself.
+    jump := len(current_chunk().code) - offset - 2
+
+    if jump > U16_MAX do error("Too much code to jump over.")
+
+    current_chunk().code[offset] = u8((jump >> 8) & 0xff)
+    current_chunk().code[offset + 1] = u8(jump & 0xff)
 }
 
 init_compiler :: proc(compiler: ^Compiler) {
@@ -493,10 +544,92 @@ expression_statement :: proc() {
 }
 
 @(private = "file")
+for_statement :: proc() {
+    begin_scope()
+    consume(.LEFT_PAREN, "Expect '(' after 'for'.")
+    if (match(.SEMICOLON)) {
+    // No initializer.
+    } else if (match(.VAR)) {
+        var_declaration()
+    } else {
+        expression_statement()
+    }
+
+    loop_start := len(current_chunk().code)
+    exit_jump := -1
+    if !match(.SEMICOLON) {
+        expression()
+        consume(.SEMICOLON, "Expect ';' after loop condition.")
+
+        // Jump out of the loop if the condition is false.
+        exit_jump = emit_jump(.JUMP_IF_FALSE)
+        emit_byte(OpCode.POP) // Condition.
+    }
+
+
+    if !match(.RIGHT_PAREN) {
+        body_jump := emit_jump(.JUMP)
+        increment_start := len(current_chunk().code)
+        expression()
+        emit_byte(OpCode.POP)
+        consume(.RIGHT_PAREN, "Expect ')' after for clauses.")
+
+        emit_loop(loop_start)
+        loop_start = increment_start
+        patch_jump(body_jump)
+    }
+
+    statement()
+    emit_loop(loop_start)
+
+    if exit_jump != -1 {
+        patch_jump(exit_jump)
+        emit_byte(OpCode.POP)
+    }
+
+    end_scope()
+}
+
+@(private = "file")
+if_statement :: proc() {
+    consume(.LEFT_PAREN, "Expect '(' after 'if'.")
+    expression()
+    consume(.RIGHT_PAREN, "Expect ')' after condition.")
+
+    then_jump := emit_jump(.JUMP_IF_FALSE)
+    emit_byte(OpCode.POP)
+    statement()
+
+    else_jump := emit_jump(.JUMP)
+
+    patch_jump(then_jump)
+    emit_byte(OpCode.POP)
+
+    if(match(.ELSE)) do statement()
+    patch_jump(else_jump)
+}
+
+@(private = "file")
 print_statement :: proc() {
     expression()
     consume(.SEMICOLON, "Expect ';' after value.")
     emit_byte(OpCode.PRINT)
+}
+
+@(private = "file")
+while_statement :: proc() {
+    loop_start := len(current_chunk().code)
+    consume(.LEFT_PAREN, "Expect '(' after 'while'.")
+    expression()
+    consume(.RIGHT_PAREN, "Expect ')' after condition.")
+
+    exit_jump := emit_jump(.JUMP_IF_FALSE)
+    emit_byte(OpCode.POP)
+    statement()
+    emit_loop(loop_start)
+
+    patch_jump(exit_jump)
+    emit_byte(OpCode.POP)
 }
 
 @(private = "file")
@@ -527,15 +660,19 @@ declaration :: proc() {
     }
 
 
-    if parser.panic_mode {
-        syncronize()
-    }
+    if parser.panic_mode do syncronize()
 }
 
 @(private = "file")
 statement :: proc() {
     if match(.PRINT) {
         print_statement()
+    } else if  match(.FOR) {
+        for_statement()
+    } else if  match(.IF) {
+        if_statement()
+    } else if  match(.WHILE) {
+        while_statement()
     } else if  match(.LEFT_BRACE) {
         begin_scope()
         block()

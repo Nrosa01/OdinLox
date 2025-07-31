@@ -105,7 +105,7 @@ match :: proc(expected: rune) -> bool {
 
 @(private = "file")
 is_at_end :: proc() -> bool {
-    return scanner.current >= utf8string.len(&scanner.buffer)-1
+    return scanner.current >= utf8string.len(&scanner.buffer)
 }
 
 @(private = "file")

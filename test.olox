@@ -1,0 +1,17 @@
+var a = 5;
+print a; 
+if (a < 2) {
+    print "It's minor";
+} else {
+    print "It's bigger";
+}
+
+var a = 1;
+while (a < 10) {
+  print a;
+  a = a + 1;
+}
+
+for(var i = 8; i > 0; i = i - 1) {
+    print i;
+}
