@@ -46,7 +46,14 @@ Local :: struct {
     depth: int,
 }
 
+FunctionType :: enum {
+    FUNCTION, SCRIPT
+}
+
 Compiler :: struct {
+    enclosing: ^Compiler,
+    function: ^ObjFunction,
+    type: FunctionType,
     locals: [U8_MAX + 1]Local,
     local_count: int,
     scope_depth: int,
@@ -57,14 +64,13 @@ current: ^Compiler
 compilingChunk: ^Chunk
 
 current_chunk :: proc() -> ^Chunk {
-    return compilingChunk
+    return &current.function.chunk
 }
 
-compile :: proc(source: string, chunk: ^Chunk) -> bool {
+compile :: proc(source: string) -> ^ObjFunction {
     init_scanner(source)
     compiler: Compiler
-    init_compiler(&compiler)
-    compilingChunk = chunk
+    init_compiler(&compiler, .SCRIPT)
 
     parser.hadError = false
     parser.panic_mode = false
@@ -76,8 +82,8 @@ compile :: proc(source: string, chunk: ^Chunk) -> bool {
     }
 
     consume(.EOF, "Expect end of expression.")
-    end_compiler()
-    return !parser.hadError
+    function := end_compiler()
+    return parser.hadError ? nil : function
 }
 
 advance :: proc() {
@@ -187,14 +193,18 @@ emit_jump :: proc(instruction: OpCode) -> int {
     return len(current_chunk().code) - 2
 }
 
-end_compiler :: proc() {
+end_compiler :: proc() -> ^ObjFunction {
     emit_return()
-
+    function := current.function
+    
     when DEBUG_PRINT_CODE {
         if !parser.hadError {
-            disassemble_chunk(current_chunk(), "code")
+            disassemble_chunk(current_chunk(), function.name != nil ? function.name.str : "<script>")
         }
     }
+    
+    current = current.enclosing
+    return function
 }
 
 @(private = "file")
@@ -231,6 +241,12 @@ binary :: proc(can_assign: bool) {
     case .SLASH: emit_byte(OpCode.DIVIDE)
     case: return
     }
+}
+
+@(private = "file")
+call :: proc(can_assign: bool) {
+    arg_count := argument_list()
+    emit_bytes(.CALL, arg_count)
 }
 
 @(private = "file")
@@ -314,7 +330,7 @@ unary :: proc(can_assign: bool) {
 
 @(rodata)
 rules := []ParseRule {
-    TokenType.LEFT_PAREN    = ParseRule{ grouping, nil, .NONE },
+    TokenType.LEFT_PAREN    = ParseRule{ grouping, call, .CALL },
     TokenType.RIGHT_PAREN   = ParseRule{ nil, nil, .NONE },
     TokenType.LEFT_BRACE    = ParseRule{ nil, nil, .NONE },
     TokenType.RIGHT_BRACE   = ParseRule{ nil, nil, .NONE },
@@ -445,6 +461,7 @@ parse_variable :: proc(error_message: string) -> u8 {
 
 @(private = "file")
 mark_initialized :: proc() {
+    if current.scope_depth == 0 do return
     current.locals[current.local_count - 1].depth = current.scope_depth
 }
 
@@ -456,6 +473,21 @@ define_variable :: proc(global: u8) {
     }
 
     emit_bytes(.DEFINE_GLOBAL, global)
+}
+
+@(private = "file")
+argument_list :: proc() -> u8 {
+    arg_count := 0
+    if !check(.RIGHT_PAREN) {
+        for {
+            expression()
+            if arg_count == 255 do error("Can't have more than 255 arguments")
+            arg_count += 1
+            if !match(.COMMA) do break
+        }
+    }
+    consume(.RIGHT_PAREN, "Expect ')' after arguments.")
+    return cast(u8)arg_count
 }
 
 @(private = "file")
@@ -473,7 +505,8 @@ get_rule :: proc(type: TokenType) -> ^ParseRule {
 }
 
 emit_return :: proc() {
-    write_chunk(current_chunk(), OpCode.RETURN, parser.previous.line)
+    emit_byte(OpCode.NIL)
+    emit_byte(OpCode.RETURN)
 }
 
 @(private = "file")
@@ -503,10 +536,19 @@ patch_jump :: proc(offset: int) {
     current_chunk().code[offset + 1] = u8(jump & 0xff)
 }
 
-init_compiler :: proc(compiler: ^Compiler) {
-    compiler.local_count = 0
-    compiler.scope_depth = 0
+init_compiler :: proc(compiler: ^Compiler, type: FunctionType) {
+    compiler.enclosing = current
+    compiler.function = nil
+    compiler.type = type
+    compiler.function = new_function()
     current = compiler
+    
+    if type != .SCRIPT do current.function.name = copy_string(parser.previous.value)
+    
+    local := &current.locals[current.local_count]
+    current.local_count += 1
+    local.depth = 0
+    local.name.value = ""
 }
 
 @(private = "file")
@@ -519,6 +561,44 @@ block :: proc() {
     for !check(.RIGHT_BRACE) && !check(.EOF) do declaration()
 
     consume(.RIGHT_BRACE, "Expect '}' after block.")
+}
+
+@(private = "file")
+function :: proc(type: FunctionType) {
+    compiler: Compiler
+    init_compiler(&compiler, type)
+    begin_scope()
+
+    consume(.LEFT_PAREN, "Expect '(' after function name.")
+    if !check(.RIGHT_PAREN) {
+        for {
+            current.function.arity += 1
+            if current.function.arity > 255 {
+                error_at_current("Can't have more than 255 parameters.")
+            }
+            
+            constant := parse_variable("Expect parameter name.");
+            define_variable(constant)
+            if !match(.COMMA) do break
+        }
+    }
+    
+    
+    
+    consume(.RIGHT_PAREN, "Expect ')' after parameters.")
+    consume(.LEFT_BRACE, "Expect '{' before function body.")
+    block()
+    
+    function := end_compiler()
+    emit_bytes(.CONSTANT, make_constant(OBJ_VAL(function)))
+}
+
+@(private = "file")
+fun_declaration :: proc() {
+    global := parse_variable("Expect function name.")
+    mark_initialized()
+    function(.FUNCTION)
+    define_variable(global)
 }
 
 @(private = "file")
@@ -617,6 +697,18 @@ print_statement :: proc() {
 }
 
 @(private = "file")
+return_statement :: proc() {
+    if current.type == .SCRIPT do error("Can't return from top-level code.")
+    
+    if match(.SEMICOLON) do emit_return()
+    else {
+        expression()
+        consume(.SEMICOLON, "Expect ';' after return value.")
+        emit_byte(OpCode.RETURN)
+    }
+}
+
+@(private = "file")
 while_statement :: proc() {
     loop_start := len(current_chunk().code)
     consume(.LEFT_PAREN, "Expect '(' after 'while'.")
@@ -653,7 +745,9 @@ syncronize :: proc() {
 
 @(private = "file")
 declaration :: proc() {
-    if match(.VAR) {
+    if match(.FUN) {
+      fun_declaration()  
+    } else if match(.VAR) {
         var_declaration()
     } else {
         statement()
@@ -671,6 +765,8 @@ statement :: proc() {
         for_statement()
     } else if  match(.IF) {
         if_statement()
+    } else if  match(.RETURN) {
+        return_statement()
     } else if  match(.WHILE) {
         while_statement()
     } else if  match(.LEFT_BRACE) {

@@ -4,8 +4,16 @@ import "core:fmt"
 import "core:log"
 import "core:slice"
 import "core:strings"
+import time "core:time"
 
-STACK_MAX :: 256
+FRAMES_MAX :: 64
+STACK_MAX :: FRAMES_MAX * cast(u32) max(u8)
+
+CallFrame :: struct {
+    function: ^ObjFunction,
+    ip: int,
+    slots: []Value,
+}
 
 InterpretResult :: enum
 {
@@ -15,10 +23,10 @@ InterpretResult :: enum
 }
 
 VM :: struct {
-    chunk: ^Chunk,
-    ip: int,
+    frames: [FRAMES_MAX]CallFrame,
+    frame_count: int,
     stack: [STACK_MAX]Value,
-    stack_top: u16,
+    stack_top: u32,
     globals: Table,
     strings: Table,
     objects: ^Obj,
@@ -27,8 +35,13 @@ VM :: struct {
 @(private = "package")
 vm: VM
 
+clock_native :: proc(arg_count: u8, args: []Value) -> Value {
+    return NUMBER_VAL(cast(f64)(time.now()._nsec) / cast(f64)(time.Second))
+}
+
 init_vm :: proc() {
     reset_stack()
+    define_native("clock", clock_native)
 }
 
 free_vm :: proc() {
@@ -40,51 +53,67 @@ free_vm :: proc() {
 @(private = "file")
 reset_stack :: proc() {
     vm.stack_top = 0
+    vm.frame_count = 0
 }
 
 @(private = "file")
 runtime_error :: proc(format: string, args: ..any) {
     log.errorf(format, ..args)
 
-    instruction_index := len(vm.chunk.code) - vm.ip - 1
-    line := vm.chunk.lines[instruction_index]
-    log.errorf("[line %v] in script\n", line)
+    for i := vm.frame_count - 1; i >= 0; i -= 1 {
+        frame := &vm.frames[i]
+        function := frame.function
+        instruction_index := len(function.chunk.code) - frame.ip - 1
+        line := function.chunk.lines[instruction_index]
+        name := function.name.str if function.name != nil else "script"
+        log.errorf("[line %v] in %v()\n", line, name)
+    }
+    
     reset_stack()
 }
 
+@(private = "file")
+define_native :: proc(name: string, function: NativeFn) {
+    push(OBJ_VAL(copy_string(name)))
+    push(OBJ_VAL(new_native(function)))
+    table_set(&vm.globals, AS_STRING(vm.stack[0]), vm.stack[1])
+    pop()
+    pop()
+}
+
 interpret :: proc(source: string) -> InterpretResult {
-    chunk: Chunk
-    defer free_chunk(&chunk)
+    function := compile(source)
+    if function == nil do return .COMPILE_ERROR
 
-    if !compile(source, &chunk) {
-        return .COMPILE_ERROR
-    }
+    push(OBJ_VAL(function))
+    call(function, 0)
 
-    vm.chunk = &chunk
-    vm.ip = 0
-
-    // Surprisingly, it seems that "run" executes before the deferred statament
-    // This is pretty useful and allows cleaner code
     return run()
 }
 
 @(private = "file")
 run :: proc() -> InterpretResult {
     read_byte :: proc() -> u8 {
-        byte := current_chunk().code[vm.ip]
-        vm.ip += 1
+        frame := &vm.frames[vm.frame_count - 1]
+        byte := frame.function.chunk.code[frame.ip]
+        frame.ip += 1
         return byte
     }
 
-    read_constant :: proc() -> Value { return vm.chunk.constants[read_byte()] }
+    read_constant :: proc() -> Value {
+        frame := &vm.frames[vm.frame_count - 1]
+        return frame.function.chunk.constants[read_byte()]
+ }
 
     read_string :: proc() -> ^ObjString { return AS_STRING(read_constant()) }
 
     read_short :: proc() -> u16 {
-        vm.ip += 2
-        return u16((current_chunk().code[vm.ip - 2] << 8) | current_chunk().code[vm.ip - 1])
+        frame := &vm.frames[vm.frame_count - 1]
+        frame.ip += 2
+        return u16((frame.function.chunk.code[frame.ip - 2] << 8) | frame.function.chunk.code[frame.ip - 1])
     }
 
+    frame := &vm.frames[vm.frame_count - 1]
     
     for {
         when DEBUG_TRACE_EXECUTION {
@@ -95,7 +124,7 @@ run :: proc() -> InterpretResult {
                 fmt.printf(" ]")
             }
             fmt.println()
-            disassemble_instruction(vm.chunk, len(vm.chunk.code) - vm.ip)
+            disassemble_instruction(frame.function.chunk, frame.ip)
         }
 
         instruction := cast(OpCode) read_byte()
@@ -105,15 +134,31 @@ run :: proc() -> InterpretResult {
             fmt.println()
         case .JUMP:
             offset := read_short()
-            vm.ip += int(offset)
+            frame.ip += int(offset)
         case .JUMP_IF_FALSE:
             offset := read_short()
-            if is_falsey(peek(0)) do vm.ip += int(offset)
+            if is_falsey(peek(0)) do frame.ip += int(offset)
         case .LOOP:
             offset := read_short()
-            vm.ip -= int(offset)
+            frame.ip -= int(offset)
+        case .CALL:
+            arg_count := read_byte()
+            if !call_value(peek(u32(arg_count)), arg_count) {
+                return .RUNTIME_ERROR
+            }
+            frame = &vm.frames[vm.frame_count - 1]
         case .RETURN:
-            return .OK
+            result := pop()
+            vm.frame_count -= 1
+            if vm.frame_count == 0 {
+                pop()
+                return .OK
+            }
+
+            // vm.stack_top = frame.slots
+            vm.stack_top -= u32(frame.function.arity) + 1
+            push(result)
+            frame = &vm.frames[vm.frame_count - 1]
         case .CONSTANT:
             constant := read_constant()
             push(constant)
@@ -123,7 +168,7 @@ run :: proc() -> InterpretResult {
         case .POP: pop()
         case .GET_LOCAL:
             slot := read_byte()
-            push(vm.stack[slot])
+            push(frame.slots[slot])
         case .GET_GLOBAL:
             name := read_string()
             value: Value
@@ -139,7 +184,7 @@ run :: proc() -> InterpretResult {
             pop()
         case .SET_LOCAL:
             slot := read_byte()
-            vm.stack[slot] = peek(0)
+            frame.slots[slot] = peek(0)
         case .SET_GLOBAL:
             name := read_string()
             if table_set(&vm.globals, name, peek(0)) {
@@ -224,8 +269,46 @@ pop :: proc() -> Value {
 }
 
 @(private = "file")
-peek :: proc(distance: u16) -> Value {
+peek :: proc(distance: u32) -> Value {
     return vm.stack[vm.stack_top - 1 - distance]
+}
+
+@(private = "file")
+call :: proc(function: ^ObjFunction, arg_count: u8) -> bool {
+    if arg_count != function.arity {
+        runtime_error("Expected %v arguments but got %v", function.arity, arg_count)
+        return false
+    }
+    
+    if vm.frame_count == FRAMES_MAX {
+        runtime_error("Stack overflow.")
+        return false
+    }
+
+    frame := &vm.frames[vm.frame_count]
+    vm.frame_count += 1
+    frame.function = function
+    frame.ip = 0
+    frame.slots = vm.stack[vm.stack_top - u32(arg_count) - 1:]
+    return true
+}
+
+@(private = "file")
+call_value :: proc(callee: Value, arg_count: u8) -> bool {
+    if IS_OBJ(callee) {
+        #partial switch AS_OBJ(callee).type {
+            case .Function: return call(AS_FUNCTION(callee), arg_count)
+            case .Native: 
+                native := AS_NATIVE(callee).function
+                result := native(arg_count, vm.stack[vm.stack_top - u32(arg_count):])
+                vm.stack_top -= u32(arg_count) + 1
+                push(result)
+                return true
+        }
+    }
+    
+    runtime_error("Can only call functions and classes.")
+    return false
 }
 
 is_falsey :: proc(value: Value) -> bool {

@@ -36,7 +36,7 @@ OBJ_VAL :: #force_inline proc "contextless" (value: ^Obj)  -> Value { return Val
 
 print_value :: proc(value: Value) {
     #partial switch value.type {
-        case .OBJ: print_object(AS_OBJ(value))
+        case .OBJ: print_object(value)
         case: fmt.print(value.variant)
     }
 }
