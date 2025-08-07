@@ -8,6 +8,9 @@ import "core:hash"
 
 OBJ_TYPE :: #force_inline proc(obj: Value) -> ObjType { return AS_OBJ(obj).type }
 
+AS_CLOSURE :: #force_inline proc(value: Value) -> ^ObjClosure { return as_obj_type(value, ^ObjClosure) }
+IS_CLOSURE :: #force_inline proc(value: Value) -> bool { return is_obj_type(value, .Closure) }
+
 AS_FUNCTION :: #force_inline proc(value: Value) -> ^ObjFunction { return as_obj_type(value, ^ObjFunction) }
 IS_FUNCTION :: #force_inline proc(value: Value) -> bool { return is_obj_type(value, .Function) }
 
@@ -19,9 +22,11 @@ IS_STRING :: #force_inline proc(value: Value) -> bool { return is_obj_type(value
  
 
 ObjType :: enum {
+    Closure,
     Function,
     Native,
     String,
+    Upvalue,
 }
 
 Obj :: struct {
@@ -32,6 +37,7 @@ Obj :: struct {
 ObjFunction :: struct {
     using obj: Obj,
     arity: u8,
+    upvalue_count: int,
     chunk: Chunk,
     name: ^ObjString,
 }
@@ -47,6 +53,35 @@ ObjString :: struct {
     using obj: Obj,
     str: string,
     hash: u32,
+}
+
+ObjUpvalue :: struct {
+    using obj: Obj,
+    location: ^Value,
+    closed: Value,
+    next_upvalue: ^ObjUpvalue,
+}
+
+ObjClosure :: struct {
+    using obj: Obj,
+    function: ^ObjFunction,
+    upvalues: [dynamic]^ObjUpvalue,
+    upvalue_count: int,
+}
+
+new_upvalue :: proc(slot: ^Value) -> ^ObjUpvalue {
+    upvalue := allocate_object(ObjUpvalue, .Upvalue)
+    upvalue.location = slot
+    return upvalue
+}
+
+new_closure :: proc(function: ^ObjFunction) -> ^ObjClosure {
+    upvalues := make([dynamic]^ObjUpvalue, function.upvalue_count)
+    closure := allocate_object(ObjClosure, .Closure)
+    closure.function = function
+    closure.upvalues = upvalues
+    closure.upvalue_count = function.upvalue_count
+    return closure
 }
 
 new_function :: proc() -> ^ObjFunction {
@@ -67,9 +102,11 @@ is_obj_type :: proc(value: Value, type: ObjType) -> bool { return IS_OBJ(value) 
 
 print_object :: proc(value: Value) {
     switch AS_OBJ(value).type {
+        case .Closure: print_function(AS_CLOSURE(value).function)
         case .Function: print_function(AS_FUNCTION(value))
         case .Native: fmt.printf("<native fn>")
         case .String: fmt.printf("\"%v\"", AS_STRING(value).str)
+        case .Upvalue: fmt.printf("upvalue")
         case: fmt.print(value)
     }
 }

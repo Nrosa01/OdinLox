@@ -44,6 +44,12 @@ U16_MAX :: cast(int)max(u16)
 Local :: struct {
     name: Token,
     depth: int,
+    is_captured: bool,
+}
+
+Upvalue :: struct {
+    index: u8,
+    is_local: bool
 }
 
 FunctionType :: enum {
@@ -56,6 +62,7 @@ Compiler :: struct {
     type: FunctionType,
     locals: [U8_MAX + 1]Local,
     local_count: int,
+    upvalues: [U8_MAX]Upvalue,
     scope_depth: int,
 }
 
@@ -217,7 +224,9 @@ end_scope :: proc() {
     current.scope_depth -= 1
 
     for current.local_count > 0 && current.locals[current.local_count - 1].depth > current.scope_depth {
-        emit_byte(OpCode.POP)
+        if current.locals[current.local_count - 1].is_captured do emit_byte(OpCode.CLOSE_UPVALUE)
+        else do emit_byte(OpCode.POP)
+                
         current.local_count -= 1
     }
 }
@@ -296,6 +305,9 @@ named_variable :: proc(name: ^Token, can_assign: bool) {
     if arg != -1 {
         get_op = .GET_LOCAL
         set_op = .SET_LOCAL
+    } else if arg = resolve_upvalue(current, name); arg != - 1 {
+        get_op = .GET_UPVALUE
+        set_op = .SET_UPVALUE
     } else {
         arg = int(identifier_constant(name))
         get_op = .GET_GLOBAL
@@ -416,6 +428,44 @@ resolve_local :: proc(compiler: ^Compiler, name: ^Token) -> int {
         }
     }
 
+    return -1
+}
+
+@(private = "file")
+add_upvalue :: proc(compiler: ^Compiler, index: u8, is_local: bool) -> int {
+    upvalue_count := compiler.function.upvalue_count
+    
+    for i in 0..<upvalue_count {
+        upvalue := &compiler.upvalues[i]
+        if upvalue.index == index && upvalue.is_local == is_local do return i
+    }
+
+    if upvalue_count == U8_MAX {
+        error("Too many closure variables in function.")
+        return 0
+    }
+    
+    compiler.upvalues[upvalue_count].is_local = is_local
+    compiler.upvalues[upvalue_count].index = index
+    
+    compiler.function.upvalue_count += 1
+    return upvalue_count
+}
+
+@(private = "file")
+resolve_upvalue :: proc(compiler: ^Compiler, name: ^Token) -> int {
+    if compiler.enclosing == nil do return -1
+    
+    local := resolve_local(compiler.enclosing, name)
+    if local != -1 {
+        compiler.enclosing.locals[local].is_captured = true
+        return add_upvalue(compiler, cast(u8)local, true)  
+    } 
+    
+    if upvalue := resolve_upvalue(compiler.enclosing, name); upvalue != -1 {
+        return add_upvalue(compiler, cast(u8)upvalue, false)
+    }
+    
     return -1
 }
 
@@ -590,7 +640,12 @@ function :: proc(type: FunctionType) {
     block()
     
     function := end_compiler()
-    emit_bytes(.CONSTANT, make_constant(OBJ_VAL(function)))
+    emit_bytes(.CLOSURE, make_constant(OBJ_VAL(function)))
+    
+    for i in 0..<function.upvalue_count {
+        emit_byte(compiler.upvalues[i].is_local ? 1 : 0)
+        emit_byte(compiler.upvalues[i].index)
+    }
 }
 
 @(private = "file")

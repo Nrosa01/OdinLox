@@ -9,6 +9,8 @@ OpCode :: enum u8 {
     GET_LOCAL,
     GET_GLOBAL,
     DEFINE_GLOBAL,
+    GET_UPVALUE,
+    SET_UPVALUE,
     SET_LOCAL,
     SET_GLOBAL,
     EQUAL,
@@ -25,6 +27,8 @@ OpCode :: enum u8 {
     JUMP_IF_FALSE,
     LOOP,
     CALL,
+    CLOSURE,
+    CLOSE_UPVALUE,
     RETURN,
 }
 

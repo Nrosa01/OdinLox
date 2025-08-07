@@ -28,6 +28,25 @@ disassemble_instruction :: proc(chunk: ^Chunk, offset: int) -> int{
     case .JUMP_IF_FALSE:    return jump_instruction(.JUMP_IF_FALSE, 1, chunk, offset)
     case .LOOP:             return jump_instruction(.LOOP, -1, chunk, offset)
     case .CALL:             return byte_instruction(.CALL, chunk, offset)
+    case .CLOSURE:
+        offset := offset
+        offset += 1
+        constant := chunk.code[offset]
+        offset += 1
+        fmt.printf("%-16s %4d ", "CLOSURE", constant)
+        print_value(chunk.constants[constant])
+        fmt.println()
+
+        function := AS_FUNCTION(chunk.constants[constant])
+        for j in 0..<function.upvalue_count {
+            is_local := bool(chunk.code[offset])
+            offset += 1
+            index := chunk.code[offset]
+            offset += 1
+            fmt.printf("%04d    |               %s %d\n", offset - 2, "local" if is_local else "upvalue", index)
+        }
+        return offset
+    case .CLOSE_UPVALUE:    return simple_instruction(.CLOSE_UPVALUE, offset)
     case .RETURN:           return simple_instruction(.RETURN, offset)
     case .CONSTANT:         return constant_instruction(.CONSTANT, chunk, offset)
     case .NIL:              return simple_instruction(.NIL, offset)
@@ -38,6 +57,8 @@ disassemble_instruction :: proc(chunk: ^Chunk, offset: int) -> int{
     case .SET_LOCAL:        return byte_instruction(.SET_LOCAL, chunk, offset)
     case .GET_GLOBAL:       return constant_instruction(.GET_GLOBAL, chunk, offset)
     case .SET_GLOBAL:       return constant_instruction(.SET_GLOBAL, chunk, offset)
+    case .GET_UPVALUE:      return byte_instruction(.GET_UPVALUE, chunk, offset)
+    case .SET_UPVALUE:      return byte_instruction(.SET_UPVALUE, chunk, offset)
     case .DEFINE_GLOBAL:    return constant_instruction(.DEFINE_GLOBAL, chunk, offset)
     case .EQUAL:            return simple_instruction(.EQUAL, offset)
     case .GREATER:          return simple_instruction(.GREATER, offset)

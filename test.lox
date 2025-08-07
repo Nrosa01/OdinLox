@@ -1,11 +1,17 @@
+// Declaration
 var a = 5;
+
+// Built-in function
 print a; 
+
+// Control flow
 if (a < 2) {
     print "It's minor";
 } else {
     print "It's bigger";
 }
 
+// Loops
 var a = 1;
 while (a < 10) {
   print a;
@@ -20,15 +26,56 @@ fun areWeHavingItYet() {
   print "Yes we are!";
 }
 
+// Proof that functions are first-class citizen
 print areWeHavingItYet;
 
+// Function call (implicit return is nil)
 areWeHavingItYet();
 
+// Recursion
 fun fib(n) {
   if (n < 2) return n;
   return fib(n - 2) + fib(n - 1);
 }
 
+// Native functions* (clock)
 var start = clock();
-print fib(35);
+print fib(5);
+// print fib(35);
 print clock() - start;
+
+// Addendum: The difference between native and built-in functions, is that native functions
+// are treated like user declared functions. That means you can do this
+//      fun test() {
+//      print "hola";
+//      }
+//      
+//      clock = test;
+//      
+//      test();
+//      clock();
+//      
+//      print test == clock; // This prints 'true'
+//
+// You can't do this with the built-in procedure 'print'. 
+// In short, print is a language keyword same as if, var, while etc.
+
+// Closures
+fun outer() {
+  var x = "value";
+  fun middle() {
+    fun inner() {
+      print x;
+    }
+
+    print "create inner closure";
+    return inner;
+  }
+
+  print "return from outer";
+  return middle;
+}
+
+var mid = outer();
+var in = mid();
+in();
