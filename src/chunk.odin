@@ -72,6 +72,8 @@ write_chunk :: proc {
 }
 
 add_constant :: proc(chunk: ^Chunk, value: Value) -> int {
+    push(value)
     append(&chunk.constants, value)
+    pop()
     return len(chunk.constants) - 1
 }

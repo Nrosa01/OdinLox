@@ -74,6 +74,22 @@ table_find_string :: proc(table: ^Table, str: string, hash: u32) -> ^ObjString {
     }
 }
 
+table_remove_white :: proc(table: ^Table) {
+    for i in 0..<table.capacity {
+        entry := table.entries[i]
+        if entry.key != nil && !entry.key.is_marked {
+            table_delete(table, entry.key)
+        }  
+    }
+}
+
+mark_table :: proc (table: ^Table) {
+    for i in 0..<table.capacity {
+        entry := &table.entries[i]
+        mark_object(entry.key)
+        mark_value(entry.value)
+    }
+}
 
 @(private = "file", require_results)
 find_entry :: proc "contextless" (entries: []Entry, capacity: int, key: ^ObjString) -> ^Entry {

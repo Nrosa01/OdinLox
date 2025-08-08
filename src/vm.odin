@@ -31,6 +31,10 @@ VM :: struct {
     globals: Table,
     strings: Table,
     objects: ^Obj,
+    gray_stack: [dynamic]^Obj,
+    gray_count: int,
+    bytes_allocated: int,
+    next_gc: int,
 }
 
 @(private = "package")
@@ -43,6 +47,7 @@ clock_native :: proc(arg_count: u8, args: []Value) -> Value {
 init_vm :: proc() {
     reset_stack()
     define_native("clock", clock_native)
+    vm.next_gc = 1024*1024
 }
 
 free_vm :: proc() {
@@ -280,13 +285,13 @@ check_numbers :: proc() -> InterpretResult {
     return nil
 }
 
-@(private = "file")
+@(private = "package")
 push :: proc(value: Value) {
     vm.stack[vm.stack_top] = value
     vm.stack_top += 1
 }
 
-@(private = "file")
+@(private = "package")
 pop :: proc() -> Value {
     vm.stack_top -= 1
     return vm.stack[vm.stack_top]
@@ -372,8 +377,11 @@ is_falsey :: proc(value: Value) -> bool {
 
 @(private = "file")
 concatenate :: proc() {
-    b_string := AS_STRING(pop()).str
-    a_string := AS_STRING(pop()).str
+    b_string := AS_STRING(peek(0)).str
+    a_string := AS_STRING(peek(1)).str
 
-    push(OBJ_VAL(take_string(strings.concatenate([]string{ a_string, b_string }))))
+    result := OBJ_VAL(take_string(strings.concatenate([]string{ a_string, b_string })))
+    pop()
+    pop()
+    push(result)
 }

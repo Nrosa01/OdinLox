@@ -93,6 +93,14 @@ compile :: proc(source: string) -> ^ObjFunction {
     return parser.hadError ? nil : function
 }
 
+mark_compiler_roots :: proc() {
+    compiler := current
+    for compiler != nil {
+        mark_object(compiler.function)
+        compiler = compiler.enclosing
+    }
+}
+
 advance :: proc() {
     parser.previous = parser.current
 

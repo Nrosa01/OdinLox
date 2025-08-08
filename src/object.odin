@@ -31,6 +31,7 @@ ObjType :: enum {
 
 Obj :: struct {
     type: ObjType,
+    is_marked: bool,
     next: ^Obj,
 }
 
@@ -137,7 +138,9 @@ allocate_string :: proc(str: string, hash: u32) -> ^ObjString {
     obj_string := cast(^ObjString) allocate_object(ObjString, .String)
     obj_string.str = str
     obj_string.hash = hash
+    push(OBJ_VAL(obj_string))
     table_set(&vm.strings, obj_string, NIL_VAL())
+    pop()
     return obj_string
 }
 
@@ -163,5 +166,15 @@ allocate_object :: proc($T: typeid, type: ObjType) -> ^T {
     object.type = type
     object.next = vm.objects
     vm.objects = object
+
+    when DEBUG_STRESS_GC do collect_garbage()
+    else {
+        vm.bytes_allocated += size_of(T)
+        if (vm.bytes_allocated > vm.next_gc) {
+            collect_garbage()
+        }
+    }
+    
+    when DEBUG_LOG_GC do fmt.printf("%v allocate %v for %d", object, size_of(type), type)
     return object
 }
