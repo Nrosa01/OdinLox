@@ -79,3 +79,16 @@ fun outer() {
 var mid = outer();
 var in = mid();
 in();
+
+
+class Brioche {}
+var a = Brioche();
+print Brioche;
+print a;
+
+class Pair {}
+
+var pair = Pair();
+pair.first = 1;
+pair.second = 2;
+print pair.first + pair.second; // 3.

@@ -267,6 +267,19 @@ call :: proc(can_assign: bool) {
 }
 
 @(private = "file")
+dot :: proc(can_assign: bool) {
+    consume(.IDENTIFIER, "Expect property name after '.'.")
+    name := identifier_constant(&parser.previous)
+    
+    if can_assign && match(.EQUAL) {
+        expression()
+        emit_bytes(OpCode.SET_PROPERTY, name)
+    } else {
+        emit_bytes(OpCode.GET_PROPERTY, name)
+    }
+}
+
+@(private = "file")
 literal :: proc(can_assign: bool) {
     #partial switch parser.previous.type {
     case .FALSE: emit_byte(OpCode.FALSE)
@@ -355,7 +368,7 @@ rules := []ParseRule {
     TokenType.LEFT_BRACE    = ParseRule{ nil, nil, .NONE },
     TokenType.RIGHT_BRACE   = ParseRule{ nil, nil, .NONE },
     TokenType.COMMA         = ParseRule{ nil, nil, .NONE },
-    TokenType.DOT           = ParseRule{ nil, nil, .NONE },
+    TokenType.DOT           = ParseRule{ nil, dot, .CALL },
     TokenType.MINUS         = ParseRule{ unary, binary, .TERM },
     TokenType.PLUS          = ParseRule{ nil, binary, .TERM },
     TokenType.SEMICOLON     = ParseRule{ nil, nil, .NONE },
@@ -657,6 +670,19 @@ function :: proc(type: FunctionType) {
 }
 
 @(private = "file")
+class_declaration :: proc() {
+    consume(.IDENTIFIER, "Expect class name.")
+    name_constant := identifier_constant(&parser.previous)
+    declare_variable()
+    
+    emit_bytes(OpCode.CLASS, name_constant)
+    define_variable(name_constant)
+    
+    consume(.LEFT_BRACE, "Expect '{' before class body.")
+    consume(.RIGHT_BRACE, "Expect '}' after class body.")
+}
+
+@(private = "file")
 fun_declaration :: proc() {
     global := parse_variable("Expect function name.")
     mark_initialized()
@@ -808,7 +834,9 @@ syncronize :: proc() {
 
 @(private = "file")
 declaration :: proc() {
-    if match(.FUN) {
+    if match(.CLASS) {
+      class_declaration()  
+    } else if match(.FUN) {
       fun_declaration()  
     } else if match(.VAR) {
         var_declaration()

@@ -182,6 +182,8 @@ run :: proc() -> InterpretResult {
             vm.stack_top -= u32(frame.closure.function.arity) + 1
             push(result)
             frame = &vm.frames[vm.frame_count - 1]
+        case .CLASS:
+            push(OBJ_VAL(new_class(read_string())))
         case .CONSTANT:
             constant := read_constant()
             push(constant)
@@ -221,6 +223,35 @@ run :: proc() -> InterpretResult {
         case .SET_UPVALUE:
             slot := read_byte()
             frame.closure.upvalues[slot].location^ = peek(0)
+        case .GET_PROPERTY:
+            if (!IS_INSTANCE(peek(0))) {
+                runtime_error("Only instances have properties.")
+                return .RUNTIME_ERROR
+            }
+            
+            instance := AS_INSTANCE(peek(0))
+            name := read_string()
+            
+            
+            if value, exists := table_get(&instance.fields, name); exists {
+                pop()
+                push(value)
+                break
+            }
+        
+            runtime_error("Undefined property '%v'", name.str)
+            return .RUNTIME_ERROR
+        case .SET_PROPERTY:
+            if (!IS_INSTANCE(peek(1))) {
+                runtime_error("Only instances have fields.")
+                return .RUNTIME_ERROR
+            }
+        
+            instance := AS_INSTANCE(peek(1))
+            table_set(&instance.fields, read_string(), peek(0))
+            value := pop()
+            pop()
+            push(value)
         case .EQUAL:
             a := pop()
             b := pop()
@@ -326,6 +357,10 @@ call :: proc(closure: ^ObjClosure, arg_count: u8) -> bool {
 call_value :: proc(callee: Value, arg_count: u8) -> bool {
     if IS_OBJ(callee) {
         #partial switch AS_OBJ(callee).type {
+            case .Class:
+                class := AS_CLASS(callee)
+                vm.stack[vm.stack_top -u32(arg_count) - 1] = OBJ_VAL(new_instance(class))
+                return true
             case .Closure: return call(AS_CLOSURE(callee), arg_count)
             case .Native: 
                 native := AS_NATIVE(callee).function

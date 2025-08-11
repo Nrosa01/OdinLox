@@ -9,11 +9,17 @@ free_object :: proc(object: ^Obj) {
     when DEBUG_LOG_GC do log.debugf("%v free type %d", object, object.type)
     
     switch object.type {
+        case .Class:
+            free(object)
         case .Closure: 
             free(object)
         case .Function:
             function := cast(^ObjFunction) object
             free_chunk(&function.chunk)
+            free(object)
+        case .Instance:
+            instance := cast(^ObjInstance) object
+            free_table(&instance.fields)
             free(object)
         case .Native: 
             free(object)
@@ -72,6 +78,9 @@ blacken_object :: proc(object: ^Obj) {
     }
     
     switch object.type {
+        case .Class:
+            class := cast(^ObjClass) object
+            mark_object(class.name)
         case .Closure:
             closure := cast(^ObjClosure)object
             mark_object(closure.function)
@@ -80,6 +89,10 @@ blacken_object :: proc(object: ^Obj) {
             function := cast(^ObjFunction)object
             mark_object(function.name)
             mark_array(function.chunk.constants)
+        case .Instance:
+            instance := cast(^ObjInstance) object
+            mark_object(instance.class)
+            mark_table(&instance.fields)
         case .Upvalue: mark_value((cast(^ObjUpvalue)object).closed)
         case .Native, .String:
         case:

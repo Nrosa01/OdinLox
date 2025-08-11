@@ -8,6 +8,14 @@ import "core:hash"
 
 OBJ_TYPE :: #force_inline proc(obj: Value) -> ObjType { return AS_OBJ(obj).type }
 
+// You could perfectly use generic functions instead of creating one per object type. But I like how this
+// makes the code more readable and quick to type.
+AS_INSTANCE :: #force_inline proc(value: Value) -> ^ObjInstance { return as_obj_type(value, ^ObjInstance) }
+IS_INSTANCE :: #force_inline proc(value: Value) -> bool { return is_obj_type(value, .Instance) }
+
+AS_CLASS :: #force_inline proc(value: Value) -> ^ObjClass { return as_obj_type(value, ^ObjClass) }
+IS_CLASS :: #force_inline proc(value: Value) -> bool { return is_obj_type(value, .Class) }
+
 AS_CLOSURE :: #force_inline proc(value: Value) -> ^ObjClosure { return as_obj_type(value, ^ObjClosure) }
 IS_CLOSURE :: #force_inline proc(value: Value) -> bool { return is_obj_type(value, .Closure) }
 
@@ -22,8 +30,10 @@ IS_STRING :: #force_inline proc(value: Value) -> bool { return is_obj_type(value
  
 
 ObjType :: enum {
+    Class,
     Closure,
     Function,
+    Instance,
     Native,
     String,
     Upvalue,
@@ -70,10 +80,33 @@ ObjClosure :: struct {
     upvalue_count: int,
 }
 
+ObjClass :: struct {
+    using boj: Obj,
+    name: ^ObjString,
+}
+
+ObjInstance :: struct {
+    using obj: Obj,
+    class: ^ObjClass,
+    fields: Table
+}
+
 new_upvalue :: proc(slot: ^Value) -> ^ObjUpvalue {
     upvalue := allocate_object(ObjUpvalue, .Upvalue)
     upvalue.location = slot
     return upvalue
+}
+
+new_class :: proc(name: ^ObjString) -> ^ObjClass {
+    class := allocate_object(ObjClass, .Class)
+    class.name = name
+    return class
+}
+
+new_instance :: proc(class: ^ObjClass) -> ^ObjInstance {
+    instance := allocate_object(ObjInstance, .Instance)
+    instance.class = class
+    return instance
 }
 
 new_closure :: proc(function: ^ObjFunction) -> ^ObjClosure {
@@ -103,8 +136,10 @@ is_obj_type :: proc(value: Value, type: ObjType) -> bool { return IS_OBJ(value) 
 
 print_object :: proc(value: Value) {
     switch AS_OBJ(value).type {
+        case .Class: fmt.printf("%v", AS_CLASS(value).name.str)
         case .Closure: print_function(AS_CLOSURE(value).function)
         case .Function: print_function(AS_FUNCTION(value))
+        case .Instance: fmt.printf("%v instance", AS_INSTANCE(value).class.name.str)
         case .Native: fmt.printf("<native fn>")
         case .String: fmt.printf("\"%v\"", AS_STRING(value).str)
         case .Upvalue: fmt.printf("upvalue")

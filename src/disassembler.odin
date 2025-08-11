@@ -59,6 +59,8 @@ disassemble_instruction :: proc(chunk: ^Chunk, offset: int) -> int{
     case .SET_GLOBAL:       return constant_instruction(.SET_GLOBAL, chunk, offset)
     case .GET_UPVALUE:      return byte_instruction(.GET_UPVALUE, chunk, offset)
     case .SET_UPVALUE:      return byte_instruction(.SET_UPVALUE, chunk, offset)
+    case .SET_PROPERTY:     return constant_instruction(.SET_PROPERTY, chunk, offset)
+    case .GET_PROPERTY:     return constant_instruction(.GET_PROPERTY, chunk, offset)
     case .DEFINE_GLOBAL:    return constant_instruction(.DEFINE_GLOBAL, chunk, offset)
     case .EQUAL:            return simple_instruction(.EQUAL, offset)
     case .GREATER:          return simple_instruction(.GREATER, offset)
@@ -69,6 +71,7 @@ disassemble_instruction :: proc(chunk: ^Chunk, offset: int) -> int{
     case .DIVIDE:           return simple_instruction(.DIVIDE, offset)
     case .NOT:              return simple_instruction(.NOT, offset)
     case .NEGATE:           return simple_instruction(.NEGATE, offset)
+    case .CLASS:            return constant_instruction(.CLASS, chunk, offset)
     case:
         fmt.printf("Unknown opcode %d\n", instruction)
         return offset+1
