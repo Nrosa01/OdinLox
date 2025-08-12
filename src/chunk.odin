@@ -15,6 +15,7 @@ OpCode :: enum u8 {
     SET_PROPERTY,
     SET_LOCAL,
     SET_GLOBAL,
+    GET_SUPER,
     EQUAL,
     GREATER,
     LESS,
@@ -30,10 +31,12 @@ OpCode :: enum u8 {
     LOOP,
     CALL,
     INVOKE,
+    SUPER_INVOKE,
     CLOSURE,
     CLOSE_UPVALUE,
     RETURN,
     CLASS,
+    INHERIT,
     METHOD,
 }
 

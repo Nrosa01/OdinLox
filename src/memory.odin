@@ -10,10 +10,9 @@ free_object :: proc(object: ^Obj) {
     
     switch object.type {
         case .Bound_Method:
-            free_object(object)
+            free(object)
         case .Class:
             free(object)
-            
             class := cast(^ObjClass) object
             free_table(&class.methods)
         case .Closure: 

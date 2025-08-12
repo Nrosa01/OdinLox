@@ -164,6 +164,12 @@ run :: proc() -> InterpretResult {
             arg_count := read_byte()
             if !invoke(method, arg_count) do return .RUNTIME_ERROR
             frame = &vm.frames[vm.frame_count - 1]
+        case .SUPER_INVOKE:
+            method := read_string()
+            arg_count := read_byte()
+            superclass := AS_CLASS(pop())
+            if !invoke_from_class(superclass, method, arg_count) do return .RUNTIME_ERROR
+            frame = &vm.frames[vm.frame_count - 1]
         case .CLOSURE:
             function := AS_FUNCTION(read_constant())
             closure := new_closure(function)
@@ -192,6 +198,16 @@ run :: proc() -> InterpretResult {
             frame = &vm.frames[vm.frame_count - 1]
         case .CLASS:
             push(OBJ_VAL(new_class(read_string())))
+        case .INHERIT:
+            super_class := peek(1)
+            if !IS_CLASS(super_class) {
+                runtime_error("Superclass must be a class.")
+                return .RUNTIME_ERROR
+            }
+            
+            sub_class := AS_CLASS(peek(0))
+            table_add_all(&AS_CLASS(super_class).methods, &sub_class.methods)
+            pop() // Subclass
         case .METHOD:
             define_method(read_string())
         case .CONSTANT:
@@ -263,6 +279,11 @@ run :: proc() -> InterpretResult {
             value := pop()
             pop()
             push(value)
+        case .GET_SUPER:
+            name := read_string()
+            superclass := AS_CLASS(pop())
+        
+            if !bind_method(superclass, name) do return .RUNTIME_ERROR
         case .EQUAL:
             a := pop()
             b := pop()

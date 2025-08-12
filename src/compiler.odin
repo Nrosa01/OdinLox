@@ -67,7 +67,8 @@ Compiler :: struct {
 }
 
 ClassCompiler :: struct {
-    enclosing: ^ClassCompiler
+    enclosing: ^ClassCompiler,
+    has_superclass: bool,
 }
 
 parser: Parser
@@ -274,7 +275,7 @@ call :: proc(can_assign: bool) {
 @(private = "file")
 dot :: proc(can_assign: bool) {
     consume(.IDENTIFIER, "Expect property name after '.'.")
-    name := identifier_constant(&parser.previous)
+    name := identifier_constant(parser.previous)
     
     if can_assign && match(.EQUAL) {
         expression()
@@ -329,7 +330,7 @@ string_proc :: proc(can_assign: bool) {
 }
 
 @(private = "file")
-named_variable :: proc(name: ^Token, can_assign: bool) {
+named_variable :: proc(name: Token, can_assign: bool) {
     get_op, set_op: OpCode
     arg := resolve_local(current, name)
     if arg != -1 {
@@ -354,7 +355,36 @@ named_variable :: proc(name: ^Token, can_assign: bool) {
 
 @(private = "file")
 variable :: proc(can_assign: bool) {
-    named_variable(&parser.previous, can_assign)
+    named_variable(parser.previous, can_assign)
+}
+
+@(private = "file")
+synthetic_token :: proc(name: string) -> Token {
+    token: Token
+    token.value = name
+    return token
+}
+
+@(private = "file")
+super :: proc(can_assign: bool) {
+    if current_class == nil do error("Can't use 'super' outside of a class.")
+    else if !current_class.has_superclass do error("Can't use 'super' in a class with no superclass.")
+    
+    consume(.DOT, "Expect '.' after 'super'.")
+    consume(.IDENTIFIER, "Expect superclass method name.")
+    name := identifier_constant(parser.previous)
+    
+    named_variable(synthetic_token("this"), false)
+    
+    if match(.LEFT_PAREN) {
+        arg_count := argument_list()
+        named_variable(synthetic_token("super"), false)
+        emit_bytes(OpCode.SUPER_INVOKE, name)
+        emit_byte(arg_count)
+    } else {
+        named_variable(synthetic_token("super"), false)
+        emit_bytes(OpCode.GET_SUPER, name)
+    }
 }
 
 @(private = "file")
@@ -412,7 +442,7 @@ rules := []ParseRule {
     TokenType.OR            = ParseRule{ nil, or_, .OR },
     TokenType.PRINT         = ParseRule{ nil, nil, .NONE },
     TokenType.RETURN        = ParseRule{ nil, nil, .NONE },
-    TokenType.SUPER         = ParseRule{ nil, nil, .NONE },
+    TokenType.SUPER         = ParseRule{ super, nil, .NONE },
     TokenType.THIS          = ParseRule{ this, nil, .NONE },
     TokenType.TRUE          = ParseRule{ literal, nil, .NONE },
     TokenType.VAR           = ParseRule{ nil, nil, .NONE },
@@ -445,21 +475,21 @@ parse_precedence :: proc(precedence: Precedence) {
 }
 
 @(private = "file")
-identifier_constant :: proc(name: ^Token) -> u8 {
+identifier_constant :: proc(name: Token) -> u8 {
     return make_constant(OBJ_VAL(copy_string(name.value)))
 }
 
 @(private = "file")
-identifiers_equal :: proc(a:  ^Token, b: ^Token) -> bool {
+identifiers_equal :: proc(a:  Token, b: Token) -> bool {
     if len(a.value) != len(b.value) do return false
     return strings.compare(a.value, b.value) == 0
 }
 
 @(private = "file")
-resolve_local :: proc(compiler: ^Compiler, name: ^Token) -> int {
+resolve_local :: proc(compiler: ^Compiler, name: Token) -> int {
     for i := compiler.local_count - 1; i >= 0; i -= 1 {
         local := &compiler.locals[i]
-        if identifiers_equal(name, &local.name) {
+        if identifiers_equal(name, local.name) {
             if local.depth == -1 do error("Can't read local variable in its own initializer.")
             return i
         }
@@ -490,7 +520,7 @@ add_upvalue :: proc(compiler: ^Compiler, index: u8, is_local: bool) -> int {
 }
 
 @(private = "file")
-resolve_upvalue :: proc(compiler: ^Compiler, name: ^Token) -> int {
+resolve_upvalue :: proc(compiler: ^Compiler, name: Token) -> int {
     if compiler.enclosing == nil do return -1
     
     local := resolve_local(compiler.enclosing, name)
@@ -524,16 +554,16 @@ add_local :: proc(name: Token) {
 declare_variable :: proc() {
     if current.scope_depth == 0 do return
 
-    name := &parser.previous
+    name := parser.previous
 
     for i := current.local_count - 1; i >= 0; i -= 1 {
         local := &current.locals[i]
         if local.depth != -1 && local.depth < current.scope_depth do break
 
-        if identifiers_equal(name, &local.name) do error("Already a variable with this name in this scope.")
+        if identifiers_equal(name, local.name) do error("Already a variable with this name in this scope.")
     }
 
-    add_local(name^)
+    add_local(name)
 }
 
 @(private = "file")
@@ -543,7 +573,7 @@ parse_variable :: proc(error_message: string) -> u8 {
     declare_variable()
     if current.scope_depth > 0 do return 0
 
-    return identifier_constant(&parser.previous)
+    return identifier_constant(parser.previous)
 }
 
 @(private = "file")
@@ -693,7 +723,7 @@ function :: proc(type: FunctionType) {
 @(private = "file")
 method :: proc() {
     consume(.IDENTIFIER, "Expect method name.")
-    constant := identifier_constant(&parser.previous)
+    constant := identifier_constant(parser.previous)
     
     type := FunctionType.METHOD
     if strings.compare(parser.previous.value, "init") == 0 do type = FunctionType.INITIALIZER
@@ -706,7 +736,7 @@ method :: proc() {
 class_declaration :: proc() {
     consume(.IDENTIFIER, "Expect class name.")
     class_name := parser.previous
-    name_constant := identifier_constant(&parser.previous)
+    name_constant := identifier_constant(parser.previous)
     declare_variable()
     
     emit_bytes(OpCode.CLASS, name_constant)
@@ -716,7 +746,22 @@ class_declaration :: proc() {
     class_compiler.enclosing = current_class
     current_class = &class_compiler
     
-    named_variable(&class_name, false)
+    if match(.LESS) {
+        consume(.IDENTIFIER, "Expect superclass name.")
+        variable(false)
+        
+        if identifiers_equal(class_name, parser.previous) do error("A class can't inherit from itself.")
+        
+        begin_scope()
+        add_local(synthetic_token("super"))
+        define_variable(0)
+        
+        named_variable(class_name, false)
+        emit_byte(OpCode.INHERIT)
+        class_compiler.has_superclass = true
+    }
+    
+    named_variable(class_name, false)
     consume(.LEFT_BRACE, "Expect '{' before class body.")
     for !check(.RIGHT_BRACE) && !check(.EOF) {
         method()
