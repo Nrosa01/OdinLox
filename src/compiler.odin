@@ -53,7 +53,7 @@ Upvalue :: struct {
 }
 
 FunctionType :: enum {
-    FUNCTION, SCRIPT
+    FUNCTION, INITIALIZER, METHOD, SCRIPT
 }
 
 Compiler :: struct {
@@ -66,8 +66,13 @@ Compiler :: struct {
     scope_depth: int,
 }
 
+ClassCompiler :: struct {
+    enclosing: ^ClassCompiler
+}
+
 parser: Parser
 current: ^Compiler
+current_class: ^ClassCompiler
 compilingChunk: ^Chunk
 
 current_chunk :: proc() -> ^Chunk {
@@ -274,6 +279,10 @@ dot :: proc(can_assign: bool) {
     if can_assign && match(.EQUAL) {
         expression()
         emit_bytes(OpCode.SET_PROPERTY, name)
+    } else if match(.LEFT_PAREN){
+        arg_count := argument_list()
+        emit_bytes(OpCode.INVOKE, name)
+        emit_byte(arg_count)
     } else {
         emit_bytes(OpCode.GET_PROPERTY, name)
     }
@@ -349,6 +358,13 @@ variable :: proc(can_assign: bool) {
 }
 
 @(private = "file")
+this :: proc(can_assign: bool) {
+    if current_class == nil do error("Can't use 'this' outside of a class.")
+    
+    variable(false)
+}
+
+@(private = "file")
 unary :: proc(can_assign: bool) {
     operator_type := parser.previous.type
 
@@ -397,7 +413,7 @@ rules := []ParseRule {
     TokenType.PRINT         = ParseRule{ nil, nil, .NONE },
     TokenType.RETURN        = ParseRule{ nil, nil, .NONE },
     TokenType.SUPER         = ParseRule{ nil, nil, .NONE },
-    TokenType.THIS          = ParseRule{ nil, nil, .NONE },
+    TokenType.THIS          = ParseRule{ this, nil, .NONE },
     TokenType.TRUE          = ParseRule{ literal, nil, .NONE },
     TokenType.VAR           = ParseRule{ nil, nil, .NONE },
     TokenType.WHILE         = ParseRule{ nil, nil, .NONE },
@@ -576,7 +592,9 @@ get_rule :: proc(type: TokenType) -> ^ParseRule {
 }
 
 emit_return :: proc() {
-    emit_byte(OpCode.NIL)
+    if current.type == .INITIALIZER do emit_bytes(OpCode.GET_LOCAL, 0)
+    else do emit_byte(OpCode.NIL)
+    
     emit_byte(OpCode.RETURN)
 }
 
@@ -620,6 +638,9 @@ init_compiler :: proc(compiler: ^Compiler, type: FunctionType) {
     current.local_count += 1
     local.depth = 0
     local.name.value = ""
+
+    if type != .FUNCTION do local.name.value = "this"
+    else do local.name.value = ""
 }
 
 @(private = "file")
@@ -670,16 +691,40 @@ function :: proc(type: FunctionType) {
 }
 
 @(private = "file")
+method :: proc() {
+    consume(.IDENTIFIER, "Expect method name.")
+    constant := identifier_constant(&parser.previous)
+    
+    type := FunctionType.METHOD
+    if strings.compare(parser.previous.value, "init") == 0 do type = FunctionType.INITIALIZER
+    function(type)
+    
+    emit_bytes(OpCode.METHOD, constant)
+}
+
+@(private = "file")
 class_declaration :: proc() {
     consume(.IDENTIFIER, "Expect class name.")
+    class_name := parser.previous
     name_constant := identifier_constant(&parser.previous)
     declare_variable()
     
     emit_bytes(OpCode.CLASS, name_constant)
     define_variable(name_constant)
     
+    class_compiler: ClassCompiler
+    class_compiler.enclosing = current_class
+    current_class = &class_compiler
+    
+    named_variable(&class_name, false)
     consume(.LEFT_BRACE, "Expect '{' before class body.")
+    for !check(.RIGHT_BRACE) && !check(.EOF) {
+        method()
+    }
     consume(.RIGHT_BRACE, "Expect '}' after class body.")
+    emit_byte(OpCode.POP)
+    
+    current_class = current_class.enclosing
 }
 
 @(private = "file")
@@ -791,6 +836,8 @@ return_statement :: proc() {
     
     if match(.SEMICOLON) do emit_return()
     else {
+        if current.type == .INITIALIZER do error("Can't return a value from an initializer.")
+        
         expression()
         consume(.SEMICOLON, "Expect ';' after return value.")
         emit_byte(OpCode.RETURN)

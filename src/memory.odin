@@ -9,8 +9,13 @@ free_object :: proc(object: ^Obj) {
     when DEBUG_LOG_GC do log.debugf("%v free type %d", object, object.type)
     
     switch object.type {
+        case .Bound_Method:
+            free_object(object)
         case .Class:
             free(object)
+            
+            class := cast(^ObjClass) object
+            free_table(&class.methods)
         case .Closure: 
             free(object)
         case .Function:
@@ -78,9 +83,14 @@ blacken_object :: proc(object: ^Obj) {
     }
     
     switch object.type {
+        case .Bound_Method:
+            bound := cast(^ObjBoundMethod) object
+            mark_value(bound.receiver)
+            mark_object(bound.method)
         case .Class:
             class := cast(^ObjClass) object
             mark_object(class.name)
+            mark_table(&class.methods)
         case .Closure:
             closure := cast(^ObjClosure)object
             mark_object(closure.function)
@@ -110,6 +120,7 @@ mark_roots :: proc() {
     
     mark_table(&vm.globals)
     mark_compiler_roots()
+    mark_object(vm.init_string)
 }
 
 trace_references :: proc() {

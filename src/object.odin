@@ -10,6 +10,9 @@ OBJ_TYPE :: #force_inline proc(obj: Value) -> ObjType { return AS_OBJ(obj).type 
 
 // You could perfectly use generic functions instead of creating one per object type. But I like how this
 // makes the code more readable and quick to type.
+AS_BOUND_METHOD :: #force_inline proc(value: Value) -> ^ObjBoundMethod { return as_obj_type(value, ^ObjBoundMethod) }
+IS_BOUND_METHOD :: #force_inline proc(value: Value) -> bool { return is_obj_type(value, .Bound_Method) }
+
 AS_INSTANCE :: #force_inline proc(value: Value) -> ^ObjInstance { return as_obj_type(value, ^ObjInstance) }
 IS_INSTANCE :: #force_inline proc(value: Value) -> bool { return is_obj_type(value, .Instance) }
 
@@ -30,6 +33,7 @@ IS_STRING :: #force_inline proc(value: Value) -> bool { return is_obj_type(value
  
 
 ObjType :: enum {
+    Bound_Method,
     Class,
     Closure,
     Function,
@@ -83,12 +87,26 @@ ObjClosure :: struct {
 ObjClass :: struct {
     using boj: Obj,
     name: ^ObjString,
+    methods: Table,
 }
 
 ObjInstance :: struct {
     using obj: Obj,
     class: ^ObjClass,
     fields: Table
+}
+
+ObjBoundMethod :: struct {
+    using obj: Obj,
+    receiver: Value,
+    method: ^ObjClosure,
+}
+
+new_bound_method :: proc(receiver: Value, method: ^ObjClosure) -> ^ObjBoundMethod {
+    bound := allocate_object(ObjBoundMethod, .Bound_Method)
+    bound.receiver = receiver
+    bound.method = method
+    return bound
 }
 
 new_upvalue :: proc(slot: ^Value) -> ^ObjUpvalue {
@@ -136,6 +154,7 @@ is_obj_type :: proc(value: Value, type: ObjType) -> bool { return IS_OBJ(value) 
 
 print_object :: proc(value: Value) {
     switch AS_OBJ(value).type {
+        case .Bound_Method: print_function(AS_BOUND_METHOD(value).method.function)
         case .Class: fmt.printf("%v", AS_CLASS(value).name.str)
         case .Closure: print_function(AS_CLOSURE(value).function)
         case .Function: print_function(AS_FUNCTION(value))

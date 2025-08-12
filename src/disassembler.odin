@@ -28,6 +28,7 @@ disassemble_instruction :: proc(chunk: ^Chunk, offset: int) -> int{
     case .JUMP_IF_FALSE:    return jump_instruction(.JUMP_IF_FALSE, 1, chunk, offset)
     case .LOOP:             return jump_instruction(.LOOP, -1, chunk, offset)
     case .CALL:             return byte_instruction(.CALL, chunk, offset)
+    case .INVOKE:           return invoke_instruction(.INVOKE, chunk, offset)
     case .CLOSURE:
         offset := offset
         offset += 1
@@ -72,6 +73,7 @@ disassemble_instruction :: proc(chunk: ^Chunk, offset: int) -> int{
     case .NOT:              return simple_instruction(.NOT, offset)
     case .NEGATE:           return simple_instruction(.NEGATE, offset)
     case .CLASS:            return constant_instruction(.CLASS, chunk, offset)
+    case .METHOD:           return constant_instruction(.METHOD, chunk, offset)
     case:
         fmt.printf("Unknown opcode %d\n", instruction)
         return offset+1
@@ -110,4 +112,14 @@ constant_instruction :: proc(name: OpCode, chunk: ^Chunk, offset: int) -> int {
     print_value(chunk.constants[constant])
     fmt.printf("'\n")
     return offset + 2
+}
+
+@(private = "file")
+invoke_instruction :: proc(name: OpCode, chunk: ^Chunk, offset: int) -> int {
+    constant := chunk.code[offset + 1]
+    arg_count := chunk.code[offset + 2]
+    fmt.printf("%-16v (%v args) %4v '", name, arg_count, constant)
+    print_value(chunk.constants[constant])
+    fmt.println("'")
+    return offset + 3
 }

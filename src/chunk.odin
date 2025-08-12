@@ -29,10 +29,12 @@ OpCode :: enum u8 {
     JUMP_IF_FALSE,
     LOOP,
     CALL,
+    INVOKE,
     CLOSURE,
     CLOSE_UPVALUE,
     RETURN,
     CLASS,
+    METHOD,
 }
 
 Chunk :: struct
