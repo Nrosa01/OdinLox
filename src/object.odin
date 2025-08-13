@@ -193,7 +193,7 @@ allocate_string :: proc(str: string, hash: u32) -> ^ObjString {
     obj_string.str = str
     obj_string.hash = hash
     push(OBJ_VAL(obj_string))
-    table_set(&vm.strings, obj_string, NIL_VAL())
+    table_set(&vm.strings, obj_string, NIL_VAL)
     pop()
     return obj_string
 }

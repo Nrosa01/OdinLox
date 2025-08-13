@@ -65,12 +65,12 @@ table_find_string :: proc(table: ^Table, str: string, hash: u32) -> ^ObjString {
     for {
         entry := &table.entries[index]
         if entry.key == nil {
-            if entry.value.type == .NIL do return nil
+            if IS_NIL(entry.value) do return nil
         } else if len(entry.key.str) == len(str) && entry.key.hash == hash && strings.compare(entry.key.str, str) == 0 {
             return entry.key
         }
 
-        index = (index + 1) % u32(table.capacity)
+        index = (index + 1) & u32(table.capacity - 1)
     }
 }
 
@@ -127,7 +127,7 @@ adjust_capacity :: proc(table: ^Table, capacity: int) {
     entries := make([]Entry, capacity)
     for i in 0..<capacity {
         entries[i].key = nil
-        entries[i].value = NIL_VAL()
+        entries[i].value = NIL_VAL
     }
     
     table.count = 0

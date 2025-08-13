@@ -213,7 +213,7 @@ run :: proc() -> InterpretResult {
         case .CONSTANT:
             constant := read_constant()
             push(constant)
-        case .NIL: push(NIL_VAL())
+        case .NIL: push(NIL_VAL)
         case .TRUE: push(BOOL_VAL(true))
         case .FALSE: push(BOOL_VAL(false))
         case .POP: pop()
